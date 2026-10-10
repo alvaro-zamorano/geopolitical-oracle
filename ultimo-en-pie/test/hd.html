@@ -1,0 +1,103 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Prueba HD</title>
+<style>
+body{margin:0;background:#14101b;color:#efe6d6;font:14px/1.4 ui-monospace,monospace;padding:24px}
+h2{font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:#f2b43a;margin:24px 0 10px}
+.row{display:flex;gap:18px;flex-wrap:wrap}
+.pair{display:flex;gap:4px;align-items:flex-end;background:#1e1828;padding:8px}
+.pair div{text-align:center;font-size:11px;color:#a89bb8}
+canvas{image-rendering:pixelated;display:block}
+.scene{display:flex;gap:16px;flex-wrap:wrap}
+.scene div{font-size:12px;color:#a89bb8}
+</style></head><body>
+<h2>Personajes · actual (izq.) vs HD (der.)</h2>
+<div class="row" id="chars"></div>
+<h2>Escena · mismo momento</h2>
+<div class="scene"><div><p>Actual</p><canvas id="s1" width="160" height="80" style="width:800px;height:400px"></canvas></div>
+<div><p>HD (prueba)</p><canvas id="s2" width="320" height="160" style="width:800px;height:400px"></canvas></div></div>
+<script src="../src/util.js"></script><script src="../src/weapons.js"></script><script src="../src/roster.js"></script>
+<script src="../src/sprites.js"></script><script src="../src/world.js"></script><script src="../src/sim.js"></script>
+<script src="../src/render.js"></script><script src="../src/hd.js"></script>
+<script>
+const ids=['kenji','abuela','sir-oxido','pyra','toro','zorg','carmela','bruno','parca','r7'];
+const host=document.getElementById('chars');
+for(const id of ids){const d=ROSTER_BY_ID[id];const a=renderCharCanvas(d);const b=hdPass(epx2(renderCharCanvas(d)));
+ a.style.width='140px';a.style.height='150px';b.style.width='140px';b.style.height='150px';
+ const p=document.createElement('div');p.className='pair';const l=document.createElement('div');l.append(a,d.n);const r=document.createElement('div');r.append(b,'HD');p.append(l,r);host.append(p);}
+
+/* escena */
+const world=genTrainingWorld('pradera');
+function compose(K){
+  const cv=document.getElementById(K===1?'s1':'s2'),x=cv.getContext('2d');x.imageSmoothingEnabled=false;
+  x.drawImage(buildGround(world,K),0,0);
+  const rr=RNG(7);
+  // charco y salpicaduras
+  x.fillStyle='#5e0a10';fillCirclePx(x,104*K,62*K,6*K);x.fillStyle='#7a0d14';fillCirclePx(x,103*K,61*K,4*K);fillCirclePx(x,108*K,63*K,2*K);
+  for(let i=0;i<40*K;i++){const a=rr()*TAU,dd=4+rr()*16;x.fillStyle=BLOOD[i%5];x.fillRect(Math.round((104+Math.cos(a)*dd)*K),Math.round((62+Math.sin(a)*dd*0.7)*K),1,1);}
+  // obstáculos
+  const obs=[{type:'tree',v:0,x:28,y:44,r:5},{type:'rock',v:1,x:138,y:30,r:5},{type:'mushroom',v:0,x:62,y:74,r:4},{type:'tree',v:2,x:150,y:76,r:5}];
+  const items=[];
+  for(const o of obs){items.push([o.y,()=>{const s=obsSprite(o,'pradera');if(K===1)x.drawImage(s.c,o.x-s.ax,o.y+1-s.ay);else{const h=hdOf('o'+o.type+o.v,()=>s.c);x.drawImage(h,(o.x-s.ax)*2,(o.y+1-s.ay)*2);}}]);}
+  // cadáver
+  items.push([60,()=>{const cv0=renderCharCanvas(ROSTER_BY_ID['sir-oxido'],{dead:true,noWeapon:true});const im=K===1?cv0:hdOf('corpse',()=>cv0);x.save();x.translate(104*K,58*K);x.rotate(Math.PI/2);x.drawImage(im,-12*K,-21*K);x.restore();}]);
+  // luchadores con pose
+  const F=[
+    {id:'kenji',x:80,y:58,f:1,arm:-0.2,w:-0.2},
+    {id:'toro',x:93,y:60,f:-1,arm:Math.PI-0.4,w:Math.PI+0.9},
+    {id:'pyra',x:46,y:56,f:1,arm:0.1,w:-0.4},
+    {id:'valkyria',x:122,y:46,f:-1,walk:0.3},
+    {id:'zorg',x:20,y:70,f:1,arm:0.05,w:0.05},
+  ];
+  for(const fd of F){items.push([fd.y,()=>{
+    const d=ROSTER_BY_ID[fd.id];const p=idlePose(d,fd.f);
+    const o=makeCanvas(64,72),ox=o.getContext('2d');
+    drawChar(ox,d,{x:32,y:58,f:fd.f,walk:fd.walk===undefined?-1:fd.walk,bob:0});
+    drawFront(ox,d,{x:32,y:58,f:fd.f,bob:0,armAng:fd.arm!==undefined?fd.arm:p.armAng,armLen:4,wAng:fd.w!==undefined?fd.w:p.wAng});
+    // sombra
+    if(K===1){x.fillStyle='rgba(10,6,16,.32)';x.fillRect(fd.x-4,fd.y-1,9,2);x.drawImage(o,fd.x-32,fd.y-58);}
+    else{x.fillStyle='rgba(10,6,16,.22)';x.fillRect(fd.x*2-10,fd.y*2-3,20,5);x.fillStyle='rgba(10,6,16,.2)';x.fillRect(fd.x*2-8,fd.y*2-2,16,3);x.drawImage(hdPass(epx2(o)),fd.x*2-64,fd.y*2-116);}
+  }]);}
+  items.sort((a,b)=>a[0]-b[0]);for(const it of items)it[1]();
+  // estela de corte de Kenji
+  x.fillStyle='#ffffff';x.globalAlpha=.8;for(let i=0;i<=28;i++){const a=-1.4+i/28*1.6;for(let r=13*K;r<=15*K;r++)x.fillRect(Math.round(86*K+Math.cos(a)*r),Math.round(47*K+Math.sin(a)*r),1,1);}x.globalAlpha=1;
+  // gotas en el aire
+  for(let i=0;i<18*K;i++){x.fillStyle=BLOOD[i%5];x.fillRect(Math.round((96+rr()*10)*K),Math.round((44+rr()*8)*K),1,1);}
+  // bola de fuego de Pyra
+  x.fillStyle='#e2501c';fillCirclePx(x,62*K,46*K,2*K);x.fillStyle='#ffb03a';fillCirclePx(x,62*K,46*K,K);x.fillStyle='#fff3b0';x.fillRect(62*K,46*K,K,K);
+  for(let i=0;i<10*K;i++){x.fillStyle=FIRE[1+(i%4)];x.fillRect(Math.round((56+rr()*5)*K),Math.round((45+rr()*3)*K),1,1);}
+  // número de daño
+  drawText3(x,'18',93*K,30*K,'#ffffff',K,'#1a0f14');
+  drawText3(x,'KENJI',80*K,24*K,'#ffd65a',K,'#1a0f14');
+}
+compose(1);compose(2);
+/* detalle dibujado a mano a doble resolución (prueba sobre Kenji) */
+function detailKenji(cv){
+  const x=cv.getContext('2d');const d=ROSTER_BY_ID['kenji'];const P=pal(d);
+  const D=(lx,ly,c,w,h)=>{x.fillStyle=c;x.fillRect(8+lx,8+ly,w||1,h||1);};
+  // ojos: esclerótica, pupila y brillo
+  for(const ex of [16,20]){D(ex,12,'#f4efe6');D(ex,13,'#f4efe6');D(ex+1,12,'#1a1418');D(ex+1,13,'#2a2238');D(ex+1,12,'#5a5070');}
+  D(16,11,P.hrD,2);D(20,10,P.hrD,2);D(21,11,P.hrD,1);
+  // boca y mandíbula
+  D(18,16,P.sk,4);D(18,17,'#7a3a2a',3);D(14,18,P.skD,6);
+  // nariz con sombra
+  D(24,15,P.skD);
+  // mechones y brillo de pelo
+  D(10,5,P.hrL,3);D(14,4,P.hrL,2);D(6,10,P.hrL,1,3);D(5,14,P.hrD,1,4);
+  // kimono: pliegues, cuello y obi con nudo
+  D(10,22,P.c1D);D(11,24,P.c1D);D(12,26,P.c1D);D(13,27,P.c1D);
+  D(19,24,P.c1D);D(19,25,P.c1D);D(20,27,P.c1D);D(20,28,P.c1D);
+  D(9,29,shade(d.c3,-0.35),15);D(8,28,shade(d.c3,-0.2),3,4);D(7,30,shade(d.c3,-0.35),2,3);
+  D(16,22,'#ffffff');D(14,24,'#ffffff');
+  // hakama: tablas
+  D(12,35,P.c2D,1,6);D(20,35,P.c2D,1,6);D(11,40,shade(d.c2,0.2),3);D(19,40,shade(d.c2,0.2),3);
+  // empuñadura con trenzado
+  return cv;
+}
+{const host=document.getElementById('chars');const d=ROSTER_BY_ID['kenji'];
+ const a=renderCharCanvas(d),b=hdPass(epx2(renderCharCanvas(d))),c=detailKenji(hdPass(epx2(renderCharCanvas(d))));
+ for(const cvx of [a]){cvx.style.width='210px';cvx.style.height='225px';}for(const cvx of [b,c]){cvx.style.width='210px';cvx.style.height='225px';}
+ const p=document.createElement('div');p.className='pair';p.style.flexBasis='100%';p.style.justifyContent='flex-start';
+ const mk=(cv,t)=>{const e=document.createElement('div');e.append(cv,t);return e;};
+ p.append(mk(a,'Actual'),mk(b,'HD automático'),mk(c,'HD + detalle a mano'));host.prepend(p);}
+document.title='ok';
+</script></body></html>
