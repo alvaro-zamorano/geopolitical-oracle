@@ -1,8 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "",
-  "outputDirectory": "web",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "cd ultimo-en-pie && python3 build.py",
+  "outputDirectory": "ultimo-en-pie/dist"
 }
