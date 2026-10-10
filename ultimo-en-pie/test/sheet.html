@@ -1,0 +1,13 @@
+<html><body style="background:#2b2437;margin:0">
+<canvas id="c" width="300" height="200" style="width:1500px;height:1000px;image-rendering:pixelated"></canvas>
+<script src="../src/util.js"></script><script src="../src/weapons.js"></script><script src="../src/roster.js"></script><script src="../src/sprites.js"></script>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+x.fillStyle='#3a5a2a';x.fillRect(0,0,300,200);
+ROSTER.forEach((d,i)=>{const col=i%10,row=Math.floor(i/10);const px=14+col*29,py=30+row*36;
+ x.fillStyle='rgba(0,0,0,.3)';x.fillRect(px-5,py-1,10,3);
+ drawChar(x,d,{x:px,y:py,f:1,walk:-1,bob:0});
+ const p=idlePose(d,1);drawFront(x,d,{x:px,y:py,f:1,bob:0,armAng:p.armAng,armLen:4,wAng:p.wAng});
+});
+document.title='n='+ROSTER.length;
+</script></body></html>
