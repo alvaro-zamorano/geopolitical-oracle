@@ -142,12 +142,15 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .lb { position: absolute; left: 0; right: 0; height: 0; background: #050308; z-index: 1; pointer-events: none; transition: height .25s ease-out; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
 .lb-t { top: 0; } .lb-b { bottom: 0; }
 .battle.kc .lb { height: 11vh; }
-@media (max-width: 600px) { #kc-label { display: none; } }
 /* killcam: el título sube a la franja de cielo y el plano queda limpio */
 .battle.kc .ann { top: calc(11vh + 10px); }
 .battle.kc .ann .big { font-size: clamp(34px, 7.5vw, 68px); }
-.battle.kc-cine .favors, .battle.kc-cine .hint, .battle.kc-cine .follow { visibility: hidden; }
-#kc-label { font-family: var(--label); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); padding-bottom: 6px; }
+.battle.kc-cine .favors, .battle.kc-cine .hint, .battle.kc-cine .follow, .battle.kc-cine .feed { visibility: hidden; }
+#kc-label { font-family: var(--label); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); padding-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+/* repetición: punto rojo de "grabado", como en la tele */
+.battle.replay #kc-label { color: var(--bone); }
+.battle.replay #kc-label::before { content: ""; width: 8px; height: 8px; background: #ff3b3b; animation: blink 1s steps(2) infinite; }
+@media (max-width: 600px) { .battle:not(.kc-cine) #kc-label { display: none; } #kc-label { font-size: 9px; letter-spacing: .08em; } }
 .cut { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 3; }
 .cut.go { animation: cut .22s ease-out; }
 @keyframes cut { from { opacity: .9; } to { opacity: 0; } }
