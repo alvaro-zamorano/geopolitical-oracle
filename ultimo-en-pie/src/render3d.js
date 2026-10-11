@@ -34,14 +34,22 @@ function attach3D(R) {
     const C = R.cam3, vw = R.vw, vh = R.vh;
     C.F = 0.9 * Math.max(vw, vh * 0.62);
     const port = vh > vw * 1.2;
-    const P = mode === 'orbit' ? { frac: port ? 0.19 : 0.28, hy: port ? 0.34 : 0.3, feet: port ? 0.72 : 0.78 } : { frac: port ? 0.17 : 0.24, hy: port ? 0.26 : 0.22, feet: port ? 0.7 : 0.74 };
-    const dist = Math.max(24 * C.F / (vh * P.frac), focus.spread ? focus.spread * 1.15 + 50 : 0);
+    /* en vertical: menos cielo y la acción por encima de los botones */
+    const P = mode === 'orbit' ? { frac: port ? 0.22 : 0.28, hy: port ? 0.3 : 0.3, feet: port ? 0.68 : 0.76 } : { frac: port ? 0.17 : 0.24, hy: port ? 0.26 : 0.22, feet: port ? 0.7 : 0.74 };
+    let dist = 24 * C.F / (vh * P.frac);
+    /* duelo: la cámara mira de lado a la pareja, así que basta con que quepan a lo ancho */
+    if (focus.spread) dist = Math.max(dist, focus.lock ? (focus.spread * 0.5 + 16) * C.F / (vw * 0.36) : focus.spread * 1.15 + 50);
     const h = (P.feet - P.hy) * vh * dist / C.F;
     if (!C.init || snap) { C.fx = focus.x; C.fy = focus.y; C.dist = dist; C.h = h; C.hyF = P.hy; if (heading !== null) C.yaw = heading; C.init = true; }
     const k = Math.min(1, dt * 3);
     C.dist += (dist - C.dist) * k; C.h += (h - C.h) * k; C.hyF += (P.hy - C.hyF) * k;
     C.fx += (focus.x - C.fx) * Math.min(1, dt * 6); C.fy += (focus.y - C.fy) * Math.min(1, dt * 6);
-    if (mode === 'orbit') C.yaw += dt * 0.5;
+    if (mode === 'orbit' && focus.lock && focus.ang !== undefined) {
+      /* regla de los 180°: perpendicular a la línea entre los dos, del lado en que ya está, con un balanceo suave */
+      let tgt = focus.ang + Math.PI / 2 + Math.sin(R.time * 0.45) * 0.28;
+      if (Math.abs(angDiff(C.yaw, tgt)) > Math.PI / 2) tgt += Math.PI;
+      C.yaw += angDiff(C.yaw, tgt) * Math.min(1, dt * 1.4);
+    } else if (mode === 'orbit') C.yaw += dt * 0.35;
     else if (heading !== null) C.yaw += angDiff(C.yaw, heading) * Math.min(1, dt * 1.2);
     C.mode = mode;
     let sx = 0, sy = 0;
@@ -136,13 +144,26 @@ function attach3D(R) {
     L.sort((a, b) => b[0] - a[0]);
     const over = [];
     R.picks = [];
+    /* protagonistas del plano: lo que se interponga entre ellos y la cámara se vuelve transparente */
+    const subj = [], subjSet = new Set();
+    const addSubj = (o) => {
+      if (!o || subjSet.has(o)) return;
+      subjSet.add(o);
+      const q = P(o.x, o.y); if (!q) return;
+      const hh = o.alive ? 30 : 12;
+      subj.push({ z: q.z, x0: q.sx - 10 * q.s, x1: q.sx + 10 * q.s, y0: q.sy - hh * q.s, y1: q.sy });
+    };
+    if (R.follow && R.follow.alive) addSubj(R.follow);
+    if (M.champ && M.champ.alive) addSubj(M.champ);
+    if (R.subjects) for (const o of R.subjects) addSubj(o);
+    const hides = (z, x0, x1, y0, y1) => { for (const r of subj) if (z < r.z - 3 && x0 < r.x1 && x1 > r.x0 && y0 < r.y1 && y1 > r.y0) return true; return false; };
     for (const e of L) {
       const q = e[3], s = q.s, flat = clamp(H / q.z, 0.15, 1);
       switch (e[1]) {
         case 0: {
           const o = e[2], bio = world.biomeAt(o.x, o.y), sp = obsSprite(o, bio), im = obsImg(o, bio, K);
-          const w = sp.c.width * s, h = sp.c.height * s;
-          const between = q.z < C.dist - 4 && Math.abs(q.sx - vw / 2) < w / 2 + 6 * s;
+          const w = sp.c.width * s, h = sp.c.height * s, x0 = q.sx - sp.ax * s, y0 = q.sy - sp.ay * s;
+          const between = (q.z < C.dist - 4 && Math.abs(q.sx - vw / 2) < w / 2 + 6 * s) || hides(q.z, x0, x0 + w, y0, y0 + h);
           if (between) ctx.globalAlpha = 0.35;
           ctx.drawImage(im, Math.round(q.sx - sp.ax * s), Math.round(q.sy - sp.ay * s), Math.ceil(w), Math.ceil(h));
           ctx.globalAlpha = 1;
@@ -162,18 +183,20 @@ function attach3D(R) {
           if (f.z <= 0) { ctx.fillStyle = 'rgba(10,6,16,0.35)'; const hh = Math.max(1, Math.round(3 * s * flat)); ctx.fillRect(Math.round(q.sx - 4.5 * s), Math.round(q.sy - hh / 2), Math.round(9 * s), hh); }
           if (f.isChamp && f.z <= 0 && !training) ring(f.x, f.y, 7, (R.time * 3 | 0) % 2 ? '#f2b43a' : '#ffd65a');
           const top = q.sy - (58 + (f.z || 0)) * s;
-          if (q.z < C.dist * 0.6 && f !== R.follow) ctx.globalAlpha = 0.45;
+          if (!subjSet.has(f) && (q.z < C.dist * 0.6 || hides(q.z, q.sx - 10 * s, q.sx + 10 * s, q.sy - 30 * s, q.sy))) ctx.globalAlpha = 0.4;
           ctx.drawImage(off, Math.round(q.sx - 32 * s), Math.round(top), Math.ceil(64 * s), Math.ceil(72 * s));
           ctx.globalAlpha = 1;
           const headY = q.sy - (f.z || 0) * s - 26 * s;
           R.picks.push({ f, x0: q.sx - 8 * s, x1: q.sx + 8 * s, y0: headY, y1: q.sy });
-          if (!training && R.showBar(f)) over.push([f, q.sx, headY, s]);
+          /* en la killcam no hay nombres ni barras flotando: el plano es para el golpe */
+          if (!training && !R.cine && R.showBar(f)) over.push([f, q.sx, headY, s]);
           break;
         }
         case 2: {
           const c = e[2];
           ctx.save();
           ctx.globalAlpha = R.corpseAlpha ? R.corpseAlpha(c) : 1;
+          if (!subjSet.has(c) && hides(q.z, q.sx - 14 * s, q.sx + 14 * s, q.sy - 12 * s, q.sy)) ctx.globalAlpha *= 0.35;
           ctx.translate(Math.round(q.sx), Math.round(q.sy - 3 * s * flat));
           ctx.scale(s, s * clamp(flat * 2.4, 0.3, 1));
           ctx.rotate(c.rot);
@@ -185,9 +208,11 @@ function attach3D(R) {
         case 4: { const sp = itemImg('potion', K); ctx.drawImage(sp, Math.round(q.sx - 3 * s), Math.round(q.sy - 8 * s), Math.ceil(6 * s), Math.ceil(8 * s)); break; }
         case 5: {
           const A = e[2], y = q.sy - A.z * s;
+          if (hides(q.z, q.sx - 11 * s, q.sx + 11 * s, y - 26 * s, y)) ctx.globalAlpha = 0.35;
           if (!A.landed) ctx.drawImage(itemImg('chute', K), Math.round(q.sx - 11 * s), Math.round(y - 26 * s), Math.ceil(22 * s), Math.ceil(14 * s));
           else { ctx.fillStyle = 'rgba(255,214,90,0.25)'; ctx.fillRect(Math.round(q.sx - 1 * s), Math.round(q.sy - 90 * s), Math.max(1, Math.round(2 * s)), Math.round(90 * s)); }
           ctx.drawImage(itemImg('crate', K), Math.round(q.sx - 8 * s), Math.round(y - 14 * s), Math.ceil(16 * s), Math.ceil(15 * s));
+          ctx.globalAlpha = 1;
           break;
         }
       }
@@ -252,9 +277,9 @@ function attach3D(R) {
     }
     /* números de daño */
     for (const n of R.nums) {
-      const q = P(n.x, n.y + 22); if (!q || q.z > 240) continue;
+      const hh = n.h === undefined ? 22 : n.h, q = P(n.x, n.y + hh); if (!q || q.z > 240) continue;
       ctx.globalAlpha = clamp(n.t * 3, 0, 1);
-      drawText3(ctx, n.txt, q.sx, q.sy - (22 + n.z) * q.s, n.c, n.big && q.s > 2.2 ? 2 : 1, '#1a0f14');
+      drawText3(ctx, n.txt, q.sx, q.sy - (hh + n.z) * q.s, n.c, n.big && q.s > 2.2 ? 2 : 1, '#1a0f14');
       ctx.globalAlpha = 1;
     }
     /* nombres y barras de vida (siempre encima) */
