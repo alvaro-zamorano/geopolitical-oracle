@@ -299,7 +299,8 @@ function createRenderer(canvas, M, opts) {
     M, ctx, canvas, K, vw: canvas.width / K, vh: canvas.height / K, cam: { x: 0, y: 0 }, follow: null, time: 0,
     parts: [], nums: [], beams: [], rings: [], corpses: [], pools: [], flashes: [], slashes: [],
     shake: 0, hitstop: 0, slowmo: 0, gore: opts.gore === undefined ? 1 : opts.gore, preview: !!opts.preview,
-    ground: buildGround(M.world, K), lavaPts: [], waterPts: [], onSound: opts.onSound || null
+    ground: buildGround(M.world, K), lavaPts: [], waterPts: [], onSound: opts.onSound || null,
+    bias: { x: 0, y: 0 }, offY: 0, subjects: null, cine: false
   };
   const G = R.ground.getContext('2d');
   G.setTransform(K, 0, 0, K, 0, 0);
@@ -357,7 +358,24 @@ function createRenderer(canvas, M, opts) {
       part({ x, y, z, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8, vz: 15 + Math.random() * 45, life: 1.6, c: BLOOD[(Math.random() * BLOOD.length) | 0], t: 1, s: Math.random() < 0.25 ? 2 : 1 });
     }
   };
-  const num = (x, y, txt, c, big) => { R.nums.push({ x: x + (Math.random() - 0.5) * 6, y, z: 14, vz: 26, t: big ? 1.0 : 0.75, txt, c, big }); };
+  /* números de daño: a un lado del cuerpo (alternando) para no tapar nombre ni barra */
+  const num = (x, y, txt, c, big, tgt) => {
+    if (!tgt) { R.nums.push({ x: x + (Math.random() - 0.5) * 6, y, z: 14, vz: 26, t: big ? 1.0 : 0.75, age: 0, txt, c, big }); return; }
+    tgt.numSide = tgt.numSide > 0 ? -1 : 1;
+    R.nums.push({ x: tgt.x + tgt.numSide * (13 + Math.random() * 2), y: tgt.y - 16, h: 16, z: 10, vz: 24, t: big ? 1.0 : 0.8, age: 0, txt, c, big });
+  };
+  /* golpes seguidos al mismo luchador se suman en un solo número en vez de apilarse */
+  const hitNum = (t, dmg, crit, armor) => {
+    for (const n of R.nums) if (n.tgt === t && n.age < 0.45) {
+      n.val += dmg; n.crit = n.crit || crit;
+      n.txt = String(Math.round(n.val)) + (n.crit ? '!' : '');
+      n.c = n.crit ? '#ffd65a' : armor ? '#9fd8ff' : '#ffffff';
+      n.big = n.crit || n.val >= 30; n.t = Math.max(n.t, 0.8); n.age = 0;
+      return;
+    }
+    num(0, 0, String(Math.round(dmg)) + (crit ? '!' : ''), crit ? '#ffd65a' : armor ? '#9fd8ff' : '#ffffff', crit, t);
+    const n = R.nums[R.nums.length - 1]; n.tgt = t; n.val = dmg; n.crit = crit;
+  };
   /* solo se muestran números y barras del luchador seguido y de quien pelea con él */
   const mine = (t, src) => R.preview || (R.follow && (t === R.follow || src === R.follow));
   R.showBar = (o) => {
@@ -389,14 +407,14 @@ function createRenderer(canvas, M, opts) {
         if (o.kind === 'poison' && Math.random() < 0.08) part({ x: t.x + (Math.random() - 0.5) * 6, y: t.y, z: 10, vx: 0, vy: 0, vz: 12, life: 0.6, c: '#7dff6a', t: 2, s: 1 });
         if (o.kind === 'cont') {
           if (t.w && Math.random() < 0.35) blood(t.x, t.y, 9, dir, 1, 45);
-          if (t.contN === undefined || R.time - t.contN > 0.35) { t.contN = R.time; if (showNum) num(t.x, t.y - 22, String(Math.max(1, Math.round(t.tickAcc))), '#ffb03a'); t.tickAcc = 0; snd('hit', t.x, t.y, 0.4); }
-        } else if (t.tickAcc >= 4) { if (showNum) num(t.x, t.y - 22, String(Math.round(t.tickAcc)), o.kind === 'zone' ? '#c77dff' : o.kind === 'poison' ? '#7dff6a' : o.kind === 'bleed' ? '#ff5a5a' : '#ffb03a'); t.tickAcc = 0; }
+          if (t.contN === undefined || R.time - t.contN > 0.35) { t.contN = R.time; if (showNum) num(t.x, t.y - 22, String(Math.max(1, Math.round(t.tickAcc))), '#ffb03a', false, t); t.tickAcc = 0; snd('hit', t.x, t.y, 0.4); }
+        } else if (t.tickAcc >= 4) { if (showNum) num(t.x, t.y - 22, String(Math.round(t.tickAcc)), o.kind === 'zone' ? '#c77dff' : o.kind === 'poison' ? '#7dff6a' : o.kind === 'bleed' ? '#ff5a5a' : '#ffb03a', false, t); t.tickAcc = 0; }
         return;
       }
       const n = Math.min(16, 3 + Math.round(dmg * 0.5));
       if (armor) for (let i = 0; i < 6; i++) { const a = dir + Math.PI + (Math.random() - 0.5) * 2; part({ x: t.x, y: t.y, z: 10, vx: Math.cos(a) * 70, vy: Math.sin(a) * 50, vz: 20, life: 0.25, c: i % 2 ? '#9fd8ff' : '#ffffff', t: 4, s: 1 }); }
       blood(t.x, t.y, 9, dir, n, 28 + dmg * 1.6);
-      if (showNum) num(t.x, t.y - 22, String(Math.round(dmg)) + (crit ? '!' : ''), crit ? '#ffd65a' : armor ? '#9fd8ff' : '#ffffff', crit);
+      if (showNum) hitNum(t, dmg, crit, armor);
       const w = o.w;
       let s = dmg > 18 || crit ? 'heavy' : 'hit';
       if (w && w.sfx === 'clang') s = 'clang'; else if (w && w.sfx === 'boing') s = 'boing';
@@ -520,7 +538,7 @@ function createRenderer(canvas, M, opts) {
       else { p.vz -= 200 * dt; p.z = Math.max(0, p.z + p.vz * dt); p.vx *= 0.92; p.vy *= 0.92; }
       if (p.life <= 0) R.parts.splice(i, 1);
     }
-    for (let i = R.nums.length - 1; i >= 0; i--) { const n = R.nums[i]; n.t -= dt; n.z += n.vz * dt; n.vz *= 0.93; if (n.t <= 0) R.nums.splice(i, 1); }
+    for (let i = R.nums.length - 1; i >= 0; i--) { const n = R.nums[i]; n.t -= dt; n.age = (n.age || 0) + dt; n.z += n.vz * dt; n.vz *= 0.93; if (n.t <= 0) R.nums.splice(i, 1); }
     for (let i = R.beams.length - 1; i >= 0; i--) { R.beams[i].t -= dt; if (R.beams[i].t <= 0) R.beams.splice(i, 1); }
     for (let i = R.rings.length - 1; i >= 0; i--) { const g = R.rings[i]; g.t -= dt; g.r += (g.max - g.r) * 0.3; if (g.t <= 0) R.rings.splice(i, 1); }
     for (let i = R.flashes.length - 1; i >= 0; i--) { R.flashes[i].t -= dt; if (R.flashes[i].t <= 0) R.flashes.splice(i, 1); }
@@ -718,7 +736,17 @@ function createRenderer(canvas, M, opts) {
     R.time += dtReal;
     const f = R.follow;
     if (f) {
-      const tx = f.alive ? f.x + f.vx * 0.25 : f.x, ty = f.alive ? f.y - 10 + f.vy * 0.2 : f.y - 10;
+      let tx = f.alive ? f.x + f.vx * 0.25 : f.x, ty = f.alive ? f.y - 10 + f.vy * 0.2 : f.y - 10;
+      /* si pelea, la cámara se abre hacia su rival para que no quede fuera de plano */
+      let bx = 0, by = 0;
+      if (!R.preview && f.alive && f.state === 'fight' && f.tgt && f.tgt.alive) {
+        const dx = f.tgt.x - f.x, dy = f.tgt.y - f.y;
+        if (Math.abs(dx) < R.vw && Math.abs(dy) < R.vh) { bx = clamp(dx * 0.4, -R.vw * 0.22, R.vw * 0.22); by = clamp(dy * 0.4, -R.vh * 0.2, R.vh * 0.2); }
+      }
+      const kb = Math.min(1, dtReal * 2.2);
+      R.bias.x += (bx - R.bias.x) * kb; R.bias.y += (by - R.bias.y) * kb;
+      /* offY: centra en el hueco que deja el marcador (en móvil los botones de abajo ocupan más) */
+      tx += R.bias.x; ty += R.bias.y + R.offY;
       R.cam.x += (tx - R.cam.x) * Math.min(1, dtReal * 5); R.cam.y += (ty - R.cam.y) * Math.min(1, dtReal * 5);
     }
     if (!R.preview) {
@@ -761,7 +789,14 @@ function createRenderer(canvas, M, opts) {
       if (!o.alive || !inView(o.x, o.y)) continue;
       const sw = o.z > 0 ? Math.max(3, 9 - o.z / 20) : 9;
       ctx.fillRect(Math.round(o.x - sw / 2), Math.round(o.y) - 1, Math.round(sw), 2);
-      if (o.isChamp && o.z <= 0 && !R.preview) { ctx.fillStyle = (R.time * 3 | 0) % 2 ? '#f2b43a' : '#ffd65a'; ctx.fillRect(Math.round(o.x) - 5, Math.round(o.y) + 1, 11, 1); ctx.fillRect(Math.round(o.x) - 6, Math.round(o.y), 1, 1); ctx.fillRect(Math.round(o.x) + 6, Math.round(o.y), 1, 1); ctx.fillStyle = 'rgba(10,6,16,0.32)'; }
+      if (o.isChamp && o.z <= 0 && !R.preview) {
+        /* anillo dorado fijo en el suelo + onda que se abre: se localiza entre la multitud sin parpadeos */
+        const ox = Math.round(o.x), oy = Math.round(o.y);
+        ctx.fillStyle = '#1a0f14'; ellipseK(ctx, ox, oy + 1, 8.5, 3.5, K);
+        ctx.fillStyle = '#ffd65a'; ellipseK(ctx, ox, oy, 8.5, 3.5, K); ellipseK(ctx, ox, oy, 8, 3, K);
+        if (!REDUCED) { const ph = (R.time % 1.6) / 1.6; ctx.globalAlpha = 0.6 * (1 - ph); ellipseK(ctx, ox, oy, 8.5 + ph * 10, 3.5 + ph * 4.5, K); ctx.globalAlpha = 1; }
+        ctx.fillStyle = 'rgba(10,6,16,0.32)';
+      }
     }
     for (const A of M.airdrops) if (!A.open && inView(A.x, A.y)) { const sw = A.landed ? 14 : Math.max(4, 14 - A.z / 15); ctx.fillRect(Math.round(A.x - sw / 2), Math.round(A.y) - 1, Math.round(sw), 2); }
     /* cadáveres */
