@@ -14,6 +14,8 @@ const KEY = 'ultimo-en-pie.v1';
 let HIST = {};
 try { HIST = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { HIST = {}; }
 HIST.games = HIST.games || 0; HIST.wins = HIST.wins || 0; HIST.best = HIST.best || 0; HIST.c = HIST.c || {};
+HIST.daily = HIST.daily || {}; HIST.ach = HIST.ach || {}; HIST.tips = HIST.tips || {};
+const SHARE_URL = /^https?:$/.test(location.protocol) ? location.origin + location.pathname : '';
 const saveHist = () => { try { localStorage.setItem(KEY, JSON.stringify(HIST)); } catch (e) { /* almacenamiento no disponible */ } };
 
 const S = { sel: ROSTER[0], gore: 1, sound: true, filter: 'all', screen: 'select', cam: 'top', killcam: true, hd: true };
@@ -39,8 +41,8 @@ function buildRoster() {
     const num = document.createElement('span'); num.className = 'num'; num.textContent = String(d.num).padStart(2, '0');
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = d.n;
     b.append(num, cv, nm);
-    const rec = HIST.c[d.id];
-    if (rec && rec.w) { const wn = document.createElement('span'); wn.className = 'win'; wn.textContent = rec.w + ' V'; wn.title = rec.w + ' victorias'; b.append(wn); }
+    const md = medalEl(HIST.c[d.id]);
+    if (md) b.append(md);
     b.addEventListener('click', () => select(d, true));
     li.append(b);
     li.dataset.kind = isMelee(d.weapon) ? 'melee' : 'range';
@@ -51,6 +53,73 @@ function buildRoster() {
 function applyFilter() {
   for (const li of $('roster').children) li.hidden = S.filter !== 'all' && li.dataset.kind !== S.filter;
   for (const c of document.querySelectorAll('.chip')) c.setAttribute('aria-pressed', String(c.dataset.f === S.filter));
+}
+
+/* ---------- metajuego en la portada: medallas, logros y reto diario ---------- */
+function medalEl(rec) {
+  const m = medalOf(rec);
+  if (!m) return null;
+  const s = document.createElement('span');
+  s.className = 'medal m' + m;
+  s.title = 'Medalla de ' + MEDAL[m].n.toLowerCase() + ' · mejor puesto #' + rec.best + (rec.w ? ' · ' + rec.w + (rec.w === 1 ? ' victoria' : ' victorias') : '');
+  return s;
+}
+function updateMetaUi() {
+  const medals = ROSTER.filter((d) => medalOf(HIST.c[d.id])).length;
+  $('col-count').textContent = 'Medallas ' + medals + '/' + ROSTER.length;
+  $('ach-open').textContent = 'Logros ' + ACH.filter((a) => HIST.ach[a.id]).length + '/' + ACH.length;
+  renderDaily();
+}
+function renderDaily() {
+  const key = dayKey(), rec = HIST.daily[key], st = dailyStreak(HIST.daily, key);
+  $('dl-date').textContent = dayLabel(key);
+  const s = $('dl-state');
+  if (rec && rec.p) s.textContent = 'Hecho: #' + rec.p + ' con ' + (ROSTER_BY_ID[rec.c] ? ROSTER_BY_ID[rec.c].n : '¿?') + (st > 1 ? ' · racha de ' + st + ' días' : '');
+  else if (rec) s.textContent = 'Lo empezaste y no lo terminaste';
+  else s.textContent = st ? 'Llevas ' + st + (st === 1 ? ' día' : ' días') + ' seguidos: no pierdas la racha' : 'Aún no lo has jugado hoy';
+  $('dl-go').textContent = rec ? 'Repetir (no cuenta)' : 'Jugar el reto con ' + S.sel.n;
+}
+function renderAch() {
+  const ul = $('ach-list'); ul.innerHTML = '';
+  let n = 0;
+  for (const a of ACH) {
+    const li = document.createElement('li'), on = !!HIST.ach[a.id];
+    if (on) { li.className = 'on'; n++; }
+    const b = document.createElement('b'); b.textContent = a.n;
+    const s = document.createElement('span'); s.textContent = a.d;
+    li.append(b, s); ul.append(li);
+  }
+  $('ach-sum').textContent = n + ' de ' + ACH.length + ' desbloqueados';
+}
+function openAch(open) {
+  if (open) renderAch();
+  $('ach-sheet').hidden = !open;
+  if (open) $('ach-close').focus();
+}
+const TOASTS = [];
+let toastT = null;
+function showToast(title, sub, medal) {
+  TOASTS.push({ title, sub, medal });
+  if (!toastT) nextToast();
+}
+function nextToast() {
+  const el = $('toast'), t = TOASTS.shift();
+  if (!t) { el.hidden = true; toastT = null; return; }
+  el.innerHTML = '';
+  const m = document.createElement('span'); m.className = 'medal m' + (t.medal || 3);
+  const d = document.createElement('div');
+  const s = document.createElement('span'); s.textContent = t.sub;
+  const b = document.createElement('b'); b.textContent = t.title;
+  d.append(s, b); el.append(m, d);
+  el.hidden = false; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  toastT = setTimeout(nextToast, 2600);
+}
+function unlockAch(id) {
+  if (HIST.ach[id] || !ACH_BY_ID[id]) return;
+  HIST.ach[id] = Date.now(); saveHist();
+  if (B) B.st.newAch.push(id);
+  /* en la pantalla de resultados ya aparecen en la lista; el aviso es para los que llegan en plena batalla */
+  if (!(B && B.results)) { showToast(ACH_BY_ID[id].n, 'Logro desbloqueado'); SFX.play('pickup', 0.7); }
 }
 function select(d, user) {
   S.sel = d;
@@ -79,7 +148,7 @@ function select(d, user) {
   const rec = HIST.c[d.id];
   $('f-rec').textContent = rec ? 'Contigo: ' + rec.g + (rec.g === 1 ? ' partida' : ' partidas') + ' · ' + (rec.w || 0) + (rec.w === 1 ? ' victoria' : ' victorias') + (rec.best ? ' · mejor puesto #' + rec.best : '') : 'Aún no lo has llevado a la arena.';
   startPreview(d);
-  if (user && window.matchMedia('(max-width: 860px)').matches) { /* en móvil la ficha ya está a la vista */ }
+  renderDaily();
 }
 function startPreview(d) {
   const w = d.weapon;
@@ -94,15 +163,17 @@ function startPreview(d) {
 }
 
 /* ---------- batalla ---------- */
-function startBattle(def, seed) {
+function startBattle(def, seed, daily) {
   SFX.unlock(); SFX.on = S.sound;
+  if (daily) seed = daySeed(daily);
   show('battle');
   if (seed === undefined) seed = (Math.random() * 2147483647) | 0;
   const M = createMatch(seed, def.id, { onEvent });
   const R = createRenderer($('game'), M, { gore: S.gore, hd: S.hd, onSound: (n, v) => SFX.play(n, v) });
   attach3D(R);
   B = { M, R, speed: 1, acc: 0, results: false, deadT: -1, swapT: -1, hudT: 0, miniT: 0, ann: null, annQ: [], feed: [], introDone: false, scale: 3, kc: null, cut3d: true, perf: { n: 0, sum: 0, done: !S.hd },
-    prep: true, fav: 2, favUsed: 0, aim: null, qte: null, hintT: 0 };
+    prep: true, fav: 2, favUsed: 0, aim: null, qte: null, hintT: 0, tipT: 1,
+    daily: daily || null, counted: false, st: { perfect: 0, hot: false, newAch: [] } };
   resize();
   setKillcamUi();
   camButton();
@@ -112,6 +183,7 @@ function startBattle(def, seed) {
   $('h-feed').innerHTML = '';
   $('ann').innerHTML = '';
   $('i-name').textContent = M.world.name; $('i-champ').textContent = def.n;
+  $('i-kick').textContent = daily ? 'Reto diario · ' + dayLabel(daily) : 'Arena';
   $('intro').classList.remove('out'); $('intro').hidden = true;
   openPrep();
   setSpeed(1);
@@ -136,10 +208,13 @@ const PP = { x: 0, y: 0, perk: null, offer: [], base: null };
 function openPrep() {
   const M = B.M, C = M.champ;
   PP.x = C.x; PP.y = C.y;
-  PP.offer = PERK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+  /* en el reto diario todos reciben las mismas tres ventajas */
+  PP.offer = (B.daily ? RNG(M.seed + 77).shuffle(PERK_IDS.slice()) : PERK_IDS.slice().sort(() => Math.random() - 0.5)).slice(0, 3);
   PP.perk = PP.offer[0];
   PP.base = null;
-  $('pp-isle').textContent = M.world.name + ' · ' + C.d.n;
+  $('pp-isle').textContent = (B.daily ? 'Reto diario · ' + dayLabel(B.daily) + ' · ' : '') + M.world.name + ' · ' + C.d.n;
+  /* explicación de los favores: abierta en las primeras partidas, plegada después */
+  favsOpen(HIST.games < 3);
   const box = $('pp-perks'); box.innerHTML = '';
   for (const id of PP.offer) {
     const b = document.createElement('button');
@@ -156,6 +231,11 @@ function openPrep() {
   drawPrep();
 }
 function syncPerks() { for (const b of $('pp-perks').children) b.setAttribute('aria-checked', String(b.dataset.id === PP.perk)); }
+function favsOpen(open) {
+  $('pp-favs').classList.toggle('open', open);
+  $('pp-favs-tog').textContent = open ? 'Ocultar' : '¿Cómo funcionan?';
+  $('pp-favs-tog').setAttribute('aria-expanded', String(open));
+}
 function prepStats(x, y) {
   const M = B.M;
   let ch = 0, rv = 0;
@@ -210,6 +290,9 @@ function jump(randomize) {
   }
   placeFighter(M, C, PP.x, PP.y);
   applyPerk(C, PP.perk);
+  B.st.hot = prepStats(PP.x, PP.y).rv >= 5;
+  /* el reto diario cuenta desde el salto: abandonar también gasta el intento */
+  if (B.daily && !HIST.daily[B.daily]) { HIST.daily[B.daily] = { p: 0, c: C.d.id }; saveHist(); B.counted = true; }
   B.R.cam.x = C.x; B.R.cam.y = C.y; B.R.cam3.init = false;
   B.prep = false;
   $('prep').hidden = true;
@@ -240,6 +323,23 @@ function boltTargets() {
   const C = B.M.champ;
   return B.M.fighters.filter((f) => f !== C && f.alive && f.z <= 0 && dist(f.x, f.y, C.x, C.y) < 170);
 }
+/* la primera vez que cada favor tiene sentido, se avisa en el momento (una sola vez por dispositivo) */
+function nudge(id) {
+  const el = $(id); if (!el) return;
+  el.classList.remove('nudge'); void el.offsetWidth; el.classList.add('nudge');
+  setTimeout(() => el.classList.remove('nudge'), 3200);
+}
+function tipCheck() {
+  const M = B.M, C = M.champ, T = HIST.tips;
+  if (B.prep || B.results || B.qte || B.aim || !C.alive || B.fav <= 0 || M.t < 4 || !$('h-hint').hidden) return;
+  let k = null, msg = '';
+  if (!T.heal && C.hp < C.maxHp * 0.45 && M.t - C.lastHitT < 3) { k = 'heal'; msg = 'Tu campeón está herido: usa Poción'; }
+  else if (!T.spin && M.fighters.filter((f) => f !== C && f.alive && f.z <= 0 && dist(f.x, f.y, C.x, C.y) < 26).length >= 2) { k = 'spin'; msg = 'Está rodeado: usa Contraataque'; }
+  else if (!T.bolt && C.state === 'fight' && C.tgt && C.tgt.alive && dist(C.x, C.y, C.tgt.x, C.tgt.y) < 150) { k = 'bolt'; msg = 'Está peleando: usa Rayo y toca a su rival'; }
+  if (!k) return;
+  T[k] = 1; saveHist();
+  hint(msg, 4); nudge('fv-' + k);
+}
 function useFavor(kind) {
   if (!B || B.prep || B.results) return;
   const M = B.M, C = M.champ;
@@ -248,7 +348,7 @@ function useFavor(kind) {
   if (B.fav <= 0 || B.qte) return;
   if (kind === 'heal') {
     if (C.hp >= C.maxHp * 0.97) { hint('Tu campeón ya tiene la vida llena', 1.6); return; }
-    favorHeal(M, C); B.fav--; B.favUsed++;
+    favorHeal(M, C); B.fav--; B.favUsed++; clearHint();
   } else if (kind === 'bolt') {
     if (!boltTargets().length) { hint('No hay rivales cerca de tu campeón', 1.6); return; }
     B.aim = { t: 0 }; hint('Toca a un rival para lanzarle el rayo');
@@ -285,6 +385,7 @@ function finishQte(q) {
   if (C.alive) {
     favorSpin(M, C, q);
     announce(q === 2 ? '¡Perfecto!' : q === 1 ? '¡Bien!' : 'Flojo', 'Contraataque', q === 2 ? 'gold' : '', 3, 1.1);
+    if (q === 2) { B.st.perfect++; unlockAch('perfecto'); if (B.st.perfect >= 3) unlockAch('anillo3'); }
   }
   updateFavUi();
 }
@@ -424,6 +525,9 @@ function onEvent(type, d) {
         startKillcam(() => (k && k.alive ? mid(k, v) : v), 3.0, 'Killcam · tu campeón cae', { yaw0: k ? sideYaw(k, v) : null, force: true });
       } else if (d.killer === champ) {
         gainFavor();
+        if (d.first) unlockAch('primera');
+        if (d.weapon === FAVOR_BOLT.n) unlockAch('rayo');
+        if (d.multi >= 3) unlockAch('masacre');
         announce(d.multi >= 2 ? MULTI[Math.min(5, d.multi)] : '¡Baja!', champ.d.n + ' elimina a ' + d.victim.d.n, 'gold', 3, 1.6);
         SFX.play('ann', 0.8);
         const v = { x: d.victim.x, y: d.victim.y };
@@ -491,6 +595,7 @@ function tickBattle(dt) {
   if (B.qte) { B.qte.t += dt; if (B.qte.t > QTE_DUR + 0.12) finishQte(0); }
   if (B.aim) { B.aim.t += dt; if (B.aim.t > 8 || !M.champ.alive) { B.aim = null; clearHint(); updateFavUi(); } }
   if (B.hintT > 0) { B.hintT -= dt; if (B.hintT <= 0) clearHint(); }
+  B.tipT -= dt; if (B.tipT <= 0) { B.tipT = 0.4; tipCheck(); }
   if (R.hitstop > 0) R.hitstop--;
   else {
     let sc = B.speed;
@@ -533,14 +638,31 @@ function tickBattle(dt) {
 /* ---------- resultados ---------- */
 function showResults() {
   B.results = true;
-  const M = B.M, champ = M.champ, win = M.winner;
+  const M = B.M, champ = M.champ;
   if (!M.over) runToEnd(M);
+  const win = M.winner, won = win === champ;
   const d = champ.d, place = champ.alive ? 1 : champ.place;
-  HIST.games++; if (win === champ) HIST.wins++;
+  const prevMedal = medalOf(HIST.c[d.id]);
+  HIST.games++; if (won) HIST.wins++;
   HIST.best = HIST.best ? Math.min(HIST.best, place) : place;
   const c = HIST.c[d.id] || { g: 0, w: 0, best: 0 };
-  c.g++; if (win === champ) c.w++; c.best = c.best ? Math.min(c.best, place) : place;
-  HIST.c[d.id] = c; saveHist();
+  c.g++; if (won) c.w++; c.best = c.best ? Math.min(c.best, place) : place;
+  HIST.c[d.id] = c;
+  if (B.counted) HIST.daily[B.daily] = { p: place, c: d.id, k: champ.kills };
+  saveHist();
+  const streak = B.counted ? dailyStreak(HIST.daily, B.daily) : 0;
+  const medal = medalOf(c), medals = ROSTER.filter((r) => medalOf(HIST.c[r.id])).length;
+  /* logros de final de partida */
+  if (won) unlockAch('victoria');
+  if (won && B.favUsed === 0) unlockAch('sinayuda');
+  if (won && champ.hp < champ.maxHp * 0.1) unlockAch('pelos');
+  if (place <= 10 && champ.kills === 0) unlockAch('pacifista');
+  if (place <= 10 && B.st.hot) unlockAch('caliente');
+  if (won && d.stats.vida <= 3) unlockAch('matagigantes');
+  if (medals >= 10) unlockAch('coleccion');
+  if (ROSTER.filter((r) => HIST.c[r.id] && HIST.c[r.id].w).length >= 5) unlockAch('leyenda');
+  if (B.counted && streak >= 3) unlockAch('racha');
+  if (B.counted && place <= 3) unlockAch('podio');
   $('r-kick').textContent = M.world.name + ' · ' + fmtTime(M.t);
   const t = $('r-title');
   t.textContent = win === champ ? '¡Victoria!' : win ? win.d.n + ' gana' : 'Nadie sobrevive';
@@ -575,13 +697,61 @@ function showResults() {
     li.append(nm, k); top.append(li);
   }
   $('r-hist').textContent = 'Tu historial: ' + HIST.games + (HIST.games === 1 ? ' partida' : ' partidas') + ' · ' + HIST.wins + (HIST.wins === 1 ? ' victoria' : ' victorias') + ' · mejor puesto #' + HIST.best;
-  const box = $('r-sharebox'); box.classList.remove('show');
-  box.value = (win === champ ? 'Mi campeón ' + d.n + ' ganó Último en Pie: el último de 50 en pie (' + champ.kills + ' bajas).' : 'Mi campeón ' + d.n + ' quedó #' + place + ' de 50 en Último en Pie (' + champ.kills + (champ.kills === 1 ? ' baja' : ' bajas') + ').') + ' ¿El tuyo aguanta más?';
-  $('r-share').textContent = 'Copiar resultado';
+  /* reto diario, medalla nueva y logros de esta partida */
+  const meta = $('r-meta'); meta.innerHTML = '';
+  const line = (strong, rest) => { const q = document.createElement('p'); const b = document.createElement('b'); b.textContent = strong; q.append(b, document.createTextNode(rest)); meta.append(q); };
+  if (B.daily) {
+    if (B.counted) line('Reto diario del ' + dayLabel(B.daily) + ': #' + place, streak > 1 ? ' · racha de ' + streak + ' días seguidos' : ' · vuelve mañana para empezar una racha');
+    else line('Práctica del reto', ' · solo cuenta el primer intento de cada día');
+  }
+  if (medal > prevMedal) line('Medalla de ' + MEDAL[medal].n.toLowerCase() + ' con ' + d.n, ' · llevas ' + medals + ' de ' + ROSTER.length);
+  for (const id of B.st.newAch) line('Logro: ' + ACH_BY_ID[id].n, ' · ' + ACH_BY_ID[id].d);
+  /* tarjeta para compartir */
+  const share = { d, place, kills: champ.kills, win: won, daily: B.counted ? B.daily : null, streak, medal, island: M.world.name, url: SHARE_URL };
+  const box = $('r-sharebox'); box.classList.remove('show'); box.value = shareText(share);
+  $('r-copy').textContent = 'Copiar texto';
+  $('r-share').hidden = !navigator.share;
+  $('r-card').removeAttribute('src'); CARD = null;
+  prepareCard(share);
   show('results');
   $('scr-results').scrollTop = 0;
   const card = document.querySelector('.card[data-id="' + d.id + '"]');
-  if (card) { let wn = card.querySelector('.win'); if (c.w) { if (!wn) { wn = document.createElement('span'); wn.className = 'win'; card.append(wn); } wn.textContent = c.w + ' V'; } }
+  if (card) { const old = card.querySelector('.medal'); if (old) old.remove(); const md = medalEl(c); if (md) card.append(md); }
+  updateMetaUi();
+}
+let CARD = null;
+async function prepareCard(info) {
+  try {
+    const cv = await drawShareCard(info);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+    if (CARD && CARD.blob) URL.revokeObjectURL(CARD.url);
+    const url = blob ? URL.createObjectURL(blob) : cv.toDataURL('image/png');
+    CARD = { blob, url };
+    $('r-card').src = url; $('r-dl').href = url;
+  } catch (e) { console.error(e); }
+}
+async function doShare() {
+  const text = $('r-sharebox').value;
+  try {
+    const file = CARD && CARD.blob ? new File([CARD.blob], 'ultimo-en-pie.png', { type: 'image/png' }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], text });
+    else await navigator.share({ text });
+  } catch (e) { if (!e || e.name !== 'AbortError') copyShare(); }
+}
+function copyShare() {
+  const box = $('r-sharebox'), txt = box.value;
+  const fallback = () => { box.classList.add('show'); box.focus(); box.select(); $('r-copy').textContent = 'Selecciona y copia'; };
+  try { navigator.clipboard.writeText(txt).then(() => { $('r-copy').textContent = 'Copiado'; }, fallback); } catch (e) { fallback(); }
+}
+/* salir a mitad del reto diario: la partida se resuelve sola y ese puesto es el que cuenta */
+function abandonDaily() {
+  if (!B || !B.counted || B.results) return;
+  B.M.onEvent = null; runToEnd(B.M);
+  const C = B.M.champ;
+  const place = C.alive ? 1 : C.place;
+  HIST.daily[B.daily] = { p: place, c: C.d.id, k: C.kills }; saveHist();
+  if (dailyStreak(HIST.daily, B.daily) >= 3) unlockAch('racha');
+  if (place <= 3) unlockAch('podio');
 }
 function drawPodium(M) {
   const cv = $('podium'), x = cv.getContext('2d');
@@ -665,14 +835,19 @@ function boot(data) {
   $('b-menu').addEventListener('click', () => menu($('h-menu').hidden));
   $('b-skip').addEventListener('click', () => { menu(false); if (!B || B.results) return; B.M.onEvent = null; runToEnd(B.M); showResults(); });
   $('b-snd').addEventListener('click', () => { S.sound = !S.sound; SFX.on = S.sound; $('b-snd').textContent = S.sound ? 'Sonido: sí' : 'Sonido: no'; });
-  $('b-exit').addEventListener('click', () => { menu(false); B = null; show('select'); select(S.sel); });
+  $('b-exit').addEventListener('click', () => { menu(false); abandonDaily(); B = null; show('select'); select(S.sel); updateMetaUi(); });
   $('r-again').addEventListener('click', () => startBattle(S.sel));
   $('r-pick').addEventListener('click', () => { B = null; show('select'); select(S.sel); });
-  $('r-share').addEventListener('click', () => {
-    const box = $('r-sharebox'), txt = box.value;
-    const fallback = () => { box.classList.add('show'); box.focus(); box.select(); $('r-share').textContent = 'Selecciona y copia'; };
-    try { navigator.clipboard.writeText(txt).then(() => { $('r-share').textContent = 'Copiado'; }, fallback); } catch (e) { fallback(); }
-  });
+  $('r-share').addEventListener('click', doShare);
+  $('r-copy').addEventListener('click', copyShare);
+  $('r-dl').addEventListener('click', (e) => { if (!CARD) e.preventDefault(); });
+  $('dl-go').addEventListener('click', () => startBattle(S.sel, undefined, dayKey()));
+  $('ach-open').addEventListener('click', () => openAch(true));
+  $('ach-close').addEventListener('click', () => openAch(false));
+  $('ach-sheet').addEventListener('click', (e) => { if (e.target === $('ach-sheet')) openAch(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('ach-sheet').hidden) openAch(false); });
+  $('pp-favs-tog').addEventListener('click', () => favsOpen(!$('pp-favs').classList.contains('open')));
+  updateMetaUi();
   $('game').addEventListener('pointerdown', (e) => {
     if (!B) return;
     if (!$('h-menu').hidden) { menu(false); return; }
@@ -695,6 +870,6 @@ function boot(data) {
   try { if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ sel: S.sel.id, gore: S.gore, sound: S.sound, cam: S.cam, killcam: S.killcam, hd: S.hd })); } catch (e) { /* sin recarga en caliente */ }
   requestAnimationFrame(loop);
 }
-window.__UEP = { start: (id, seed, prep) => { startBattle(ROSTER_BY_ID[id] || S.sel, seed); if (!prep) jump(false); }, jump, useFavor, qteTap, get B() { return B; }, setSpeed, select: (id) => select(ROSTER_BY_ID[id]), S };
+window.__UEP = { start: (id, seed, prep, daily) => { startBattle(ROSTER_BY_ID[id] || S.sel, seed, daily); if (!prep) jump(false); }, jump, useFavor, qteTap, finishQte, get B() { return B; }, get HIST() { return HIST; }, setSpeed, select: (id) => select(ROSTER_BY_ID[id]), S, dayKey };
 if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
 else boot((window.claude && window.claude.hot && window.claude.hot.data) || {});
