@@ -103,7 +103,10 @@ function showToast(title, sub, medal) {
   if (!toastT) nextToast();
 }
 function nextToast() {
-  const el = $('toast'), t = TOASTS.shift();
+  const el = $('toast');
+  /* durante una killcam corta el aviso espera a que termine, para no tapar el plano */
+  if (TOASTS.length && B && B.kc && !B.kc.hold && S.screen === 'battle') { el.hidden = true; toastT = setTimeout(nextToast, 250); return; }
+  const t = TOASTS.shift();
   if (!t) { el.hidden = true; toastT = null; return; }
   el.innerHTML = '';
   const m = document.createElement('span'); m.className = 'medal m' + (t.medal || 3);
@@ -202,6 +205,17 @@ function resize() {
   cv.width = vw * K; cv.height = vh * K;
   cv.style.width = (vw * K * k / dpr) + 'px'; cv.style.height = (vh * K * k / dpr) + 'px';
   B.R.vw = vw; B.R.vh = vh; B.scale = k * K / dpr;
+  B.R.offY = hudOffset() / B.scale;
+}
+/* cuánto hay que bajar el centro de la cámara para que el campeón quede en medio del hueco libre:
+   solo cuenta el marcador que pisa la franja central de la pantalla (en escritorio va en las esquinas) */
+function hudOffset() {
+  const sb = $('scr-battle').getBoundingClientRect(), a = sb.left + sb.width * 0.3, b = sb.left + sb.width * 0.7;
+  let top = sb.top, bot = sb.bottom;
+  const hit = (el) => { const r = el && el.getBoundingClientRect(); return r && r.width && r.right > a && r.left < b ? r : null; };
+  for (const el of [document.querySelector('.status'), document.querySelector('.mini')]) { const r = hit(el); if (r) top = Math.max(top, r.bottom); }
+  for (const el of [$('favors'), $('h-champ'), document.querySelector('.ctrls')]) { const r = hit(el); if (r) bot = Math.min(bot, r.top); }
+  return clamp(((sb.bottom - bot) - (top - sb.top)) / 2, -60, 60);
 }
 /* ---------- preparación: punto de salto y ventaja ---------- */
 const PP = { x: 0, y: 0, perk: null, offer: [], base: null };
@@ -296,6 +310,7 @@ function jump(randomize) {
   B.R.cam.x = C.x; B.R.cam.y = C.y; B.R.cam3.init = false;
   B.prep = false;
   $('prep').hidden = true;
+  B.R.offY = hudOffset() / B.scale;
   $('intro').hidden = false; $('intro').classList.remove('out');
   SFX.unlock();
   updateFavUi();
@@ -331,7 +346,7 @@ function nudge(id) {
 }
 function tipCheck() {
   const M = B.M, C = M.champ, T = HIST.tips;
-  if (B.prep || B.results || B.qte || B.aim || !C.alive || B.fav <= 0 || M.t < 4 || !$('h-hint').hidden) return;
+  if (B.prep || B.results || B.qte || B.aim || B.kc || !C.alive || B.fav <= 0 || M.t < 4 || !$('h-hint').hidden) return;
   let k = null, msg = '';
   if (!T.heal && C.hp < C.maxHp * 0.45 && M.t - C.lastHitT < 3) { k = 'heal'; msg = 'Tu campeón está herido: usa Poción'; }
   else if (!T.spin && M.fighters.filter((f) => f !== C && f.alive && f.z <= 0 && dist(f.x, f.y, C.x, C.y) < 26).length >= 2) { k = 'spin'; msg = 'Está rodeado: usa Contraataque'; }
@@ -442,7 +457,7 @@ function setSpeed(v) {
 function menu(open) { $('h-menu').hidden = !open; $('b-menu').setAttribute('aria-expanded', String(open)); }
 
 /* ---------- cámara dron y killcam ---------- */
-const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, spread: Math.hypot(a.x - b.x, a.y - b.y) });
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, spread: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x) });
 function headingOf(f) {
   if (!f) return null;
   if (f.state === 'fight' || f.atkT >= 0 || f.contT > 0) return f.aim;
@@ -456,6 +471,8 @@ function flashCut() {
 function setKillcamUi() {
   const on = !!(B && B.kc);
   $('scr-battle').classList.toggle('kc', on);
+  /* killcam corta: plano limpio (sin favores ni consejos); en el duelo final los favores siguen a mano */
+  $('scr-battle').classList.toggle('kc-cine', on && !B.kc.hold);
   $('kc-label').textContent = on ? B.kc.label : '';
 }
 function camButton() {
@@ -468,8 +485,10 @@ function startKillcam(focus, dur, label, opt) {
   if (!B || B.results || !S.killcam) return;
   opt = opt || {};
   if (B.kc && B.kc.hold && !opt.hold && !opt.force) return;
+  /* no cortar al jugador mientras apunta el Rayo o hace el Contraataque */
+  if (!opt.hold && !opt.force && (B.aim || B.qte)) return;
   const was3d = S.cam === 'drone' || !!B.kc;
-  B.kc = { t: 0, dur, focus, label, hold: !!opt.hold, yaw0: opt.yaw0 === undefined ? null : opt.yaw0 };
+  B.kc = { t: 0, dur, focus, label, hold: !!opt.hold, yaw0: opt.yaw0 === undefined ? null : opt.yaw0, subj: opt.subjects || null };
   if (!was3d) { B.cut3d = true; flashCut(); }
   setKillcamUi();
 }
@@ -522,17 +541,18 @@ function onEvent(type, d) {
         SFX.play('lose', 1);
         B.deadT = M.t; B.aim = null; if (B.qte) B.qte = null; clearHint(); updateFavUi();
         const k = d.killer, v = { x: champ.x, y: champ.y };
-        startKillcam(() => (k && k.alive ? mid(k, v) : v), 3.0, 'Killcam · tu campeón cae', { yaw0: k ? sideYaw(k, v) : null, force: true });
+        startKillcam(() => (k && k.alive ? mid(k, v) : v), 3.0, 'Killcam · tu campeón cae', { yaw0: k ? sideYaw(k, v) : null, force: true, subjects: [k, v] });
       } else if (d.killer === champ) {
         gainFavor();
-        if (d.first) unlockAch('primera');
-        if (d.weapon === FAVOR_BOLT.n) unlockAch('rayo');
-        if (d.multi >= 3) unlockAch('masacre');
         announce(d.multi >= 2 ? MULTI[Math.min(5, d.multi)] : '¡Baja!', champ.d.n + ' elimina a ' + d.victim.d.n, 'gold', 3, 1.6);
         SFX.play('ann', 0.8);
         const v = { x: d.victim.x, y: d.victim.y };
         B.R.slowmo = Math.max(B.R.slowmo, 0.9);
-        startKillcam(() => (champ.alive ? mid(champ, v) : v), 2.4, 'Killcam · ' + champ.d.n, { yaw0: sideYaw(champ, v) });
+        startKillcam(() => (champ.alive ? mid(champ, v) : v), 2.4, 'Killcam · ' + champ.d.n, { yaw0: sideYaw(champ, v), subjects: [champ, v] });
+        /* después de abrir la killcam, para que el aviso de logro espere a que termine */
+        if (d.first) unlockAch('primera');
+        if (d.weapon === FAVOR_BOLT.n) unlockAch('rayo');
+        if (d.multi >= 3) unlockAch('masacre');
       } else if (d.first) {
         announce('¡Primera sangre!', (d.killer ? d.killer.d.n + ' elimina a ' : '') + d.victim.d.n, '', 2, 1.8);
         SFX.play('ann', 0.7);
@@ -544,7 +564,7 @@ function onEvent(type, d) {
       if (d.n === 2) {
         announce('¡Duelo final!', 'Solo quedan dos', 'gold', 2, 2);
         const two = M.fighters.filter((f) => f.alive);
-        if (two.length === 2) startKillcam(() => mid(two[0], two[1]), 999, 'Duelo final', { hold: true, force: true, yaw0: sideYaw(two[0], two[1]) });
+        if (two.length === 2) startKillcam(() => Object.assign(mid(two[0], two[1]), { lock: true }), 999, 'Duelo final', { hold: true, force: true, yaw0: sideYaw(two[0], two[1]), subjects: two });
       } else if (d.n === 10) announce('Quedan 10', '', '', 1, 1.4);
       if (d.n === 25 || d.n === 10) gainFavor();
       if (d.n === 2 || d.n === 10) SFX.play('ann', 0.7);
@@ -558,7 +578,7 @@ function onEvent(type, d) {
       const w = d.winner;
       if (!w) break;
       B.R.follow = w; B.R.slowmo = 1.6;
-      startKillcam(() => w, 999, w === champ ? 'Victoria' : 'Último en pie', { hold: true, force: true });
+      startKillcam(() => w, 999, w === champ ? 'Victoria' : 'Último en pie', { hold: true, force: true, subjects: [w] });
       if (w === champ) { announce('¡Victoria!', champ.d.n + ' es el último en pie', 'gold', 9, 3.4); SFX.play('win', 1); }
       else { announce(w.d.n + ' gana', 'Tu campeón quedó #' + champ.place, '', 9, 3.4); SFX.play('win', 0.6); }
       break;
@@ -617,6 +637,8 @@ function tickBattle(dt) {
     if (v && !v.alive) R.follow = v.killer && v.killer.alive ? v.killer : nearestAlive(v.x, v.y);
   }
   if (B.kc) { B.kc.t += dt; if (B.kc.t > B.kc.dur) endKillcam(); }
+  R.subjects = B.kc ? B.kc.subj : null;
+  R.cine = !!(B.kc && (!B.kc.hold || M.over));
   if (S.cam === 'drone' || B.kc) {
     let focus, heading = null, mode = 'chase';
     if (B.kc) { mode = 'orbit'; focus = B.kc.focus(); heading = B.kc.yaw0; }
@@ -817,7 +839,7 @@ function boot(data) {
     else if (e.key === '2') useFavor('bolt');
     else if (e.key === '3') { if (B.qte) qteTap(); else useFavor('spin'); }
     else if (e.key === ' ') { if (B.qte) { e.preventDefault(); qteTap(); } }
-    else if (e.key === 'Escape') { if (B.aim) { B.aim = null; clearHint(); updateFavUi(); } menu(false); }
+    else if (e.key === 'Escape') { if (B.aim) { B.aim = null; clearHint(); updateFavUi(); } else if (B.kc && !B.kc.hold) endKillcam(); menu(false); }
   });
   for (const id of ['fv-heal', 'fv-bolt', 'fv-spin']) $(id).addEventListener('click', () => { if (B && B.qte && id === 'fv-spin') { qteTap(); return; } useFavor($(id).dataset.k); });
   $('pp-map').addEventListener('pointerdown', (e) => { if (B && B.prep) prepPick(e); });
@@ -854,6 +876,8 @@ function boot(data) {
     if (B.prep) return;
     if (B.qte) { qteTap(); return; }
     if (B.aim) { aimBolt(e); return; }
+    /* tocar durante una killcam corta la salta */
+    if (B.kc && !B.kc.hold) { endKillcam(); return; }
     const r = $('game').getBoundingClientRect(), sc = B.scale;
     if (B.R.view3d) {
       const px = (e.clientX - r.left) / sc, py = (e.clientY - r.top) / sc;
@@ -870,6 +894,7 @@ function boot(data) {
   try { if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ sel: S.sel.id, gore: S.gore, sound: S.sound, cam: S.cam, killcam: S.killcam, hd: S.hd })); } catch (e) { /* sin recarga en caliente */ }
   requestAnimationFrame(loop);
 }
-window.__UEP = { start: (id, seed, prep, daily) => { startBattle(ROSTER_BY_ID[id] || S.sel, seed, daily); if (!prep) jump(false); }, jump, useFavor, qteTap, finishQte, get B() { return B; }, get HIST() { return HIST; }, setSpeed, select: (id) => select(ROSTER_BY_ID[id]), S, dayKey };
+window.__UEP = { start: (id, seed, prep, daily) => { startBattle(ROSTER_BY_ID[id] || S.sel, seed, daily); if (!prep) jump(false); }, jump, useFavor, qteTap, finishQte, get B() { return B; }, get HIST() { return HIST; }, setSpeed, select: (id) => select(ROSTER_BY_ID[id]), S, dayKey,
+  killcam: (dur, hold) => startKillcam(() => B.M.champ, dur || 2.4, 'Prueba', { hold: !!hold, subjects: [B.M.champ] }), unlock: (id) => unlockAch(id) };
 if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
 else boot((window.claude && window.claude.hot && window.claude.hot.data) || {});
