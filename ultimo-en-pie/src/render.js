@@ -155,6 +155,14 @@ function buildGround(world, k) {
   return c;
 }
 
+/* copia del suelo con sus manchas (la repetición arranca con la misma sangre que la partida en directo) */
+function cloneGround(src) {
+  const c = makeCanvas(src.width, src.height);
+  c.getContext('2d').drawImage(src, 0, 0);
+  c.buf = new Uint32Array(src.buf);
+  return c;
+}
+
 /* ---------- obstáculos ---------- */
 const OBS_CACHE = new Map();
 function obsSprite(o, biome) {
@@ -299,7 +307,7 @@ function createRenderer(canvas, M, opts) {
     M, ctx, canvas, K, vw: canvas.width / K, vh: canvas.height / K, cam: { x: 0, y: 0 }, follow: null, time: 0,
     parts: [], nums: [], beams: [], rings: [], corpses: [], pools: [], flashes: [], slashes: [],
     shake: 0, hitstop: 0, slowmo: 0, gore: opts.gore === undefined ? 1 : opts.gore, preview: !!opts.preview,
-    ground: buildGround(M.world, K), lavaPts: [], waterPts: [], onSound: opts.onSound || null,
+    ground: opts.groundFrom ? cloneGround(opts.groundFrom) : buildGround(M.world, K), lavaPts: [], waterPts: [], onSound: opts.onSound || null,
     bias: { x: 0, y: 0 }, offY: 0, subjects: null, cine: false
   };
   const G = R.ground.getContext('2d');
