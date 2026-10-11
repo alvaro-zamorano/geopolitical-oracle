@@ -105,7 +105,7 @@ function showToast(title, sub, medal) {
 function nextToast() {
   const el = $('toast');
   /* durante una killcam corta el aviso espera a que termine, para no tapar el plano */
-  if (TOASTS.length && B && B.kc && !B.kc.hold && S.screen === 'battle') { el.hidden = true; toastT = setTimeout(nextToast, 250); return; }
+  if (TOASTS.length && B && S.screen === 'battle' && (B.replay || B.replayReq || (B.kc && !B.kc.hold))) { el.hidden = true; toastT = setTimeout(nextToast, 250); return; }
   const t = TOASTS.shift();
   if (!t) { el.hidden = true; toastT = null; return; }
   el.innerHTML = '';
@@ -172,11 +172,13 @@ function startBattle(def, seed, daily) {
   show('battle');
   if (seed === undefined) seed = (Math.random() * 2147483647) | 0;
   const M = createMatch(seed, def.id, { onEvent });
+  M._n = 0;
   const R = createRenderer($('game'), M, { gore: S.gore, hd: S.hd, onSound: (n, v) => SFX.play(n, v) });
   attach3D(R);
   B = { M, R, speed: 1, acc: 0, results: false, deadT: -1, swapT: -1, hudT: 0, miniT: 0, ann: null, annQ: [], feed: [], introDone: false, scale: 3, kc: null, cut3d: true, perf: { n: 0, sum: 0, done: !S.hd },
     prep: true, fav: 2, favUsed: 0, aim: null, qte: null, hintT: 0, tipT: 1,
-    daily: daily || null, counted: false, st: { perfect: 0, hot: false, newAch: [] } };
+    daily: daily || null, counted: false, st: { perfect: 0, hot: false, newAch: [] },
+    shadow: null, inputs: [], replay: null, replayReq: null };
   resize();
   setKillcamUi();
   camButton();
@@ -304,6 +306,12 @@ function jump(randomize) {
   }
   placeFighter(M, C, PP.x, PP.y);
   applyPerk(C, PP.perk);
+  /* partida sombra: la misma partida unos segundos por detrás, para poder repetir las bajas importantes */
+  const Sh = createMatch(M.seed, C.d.id, {});
+  placeFighter(Sh, Sh.champ, PP.x, PP.y);
+  applyPerk(Sh.champ, PP.perk);
+  Sh._n = 0; Sh._ip = 0;
+  B.shadow = Sh; B.inputs = [];
   B.st.hot = prepStats(PP.x, PP.y).rv >= 5;
   /* el reto diario cuenta desde el salto: abandonar también gasta el intento */
   if (B.daily && !HIST.daily[B.daily]) { HIST.daily[B.daily] = { p: 0, c: C.d.id }; saveHist(); B.counted = true; }
@@ -356,14 +364,14 @@ function tipCheck() {
   hint(msg, 4); nudge('fv-' + k);
 }
 function useFavor(kind) {
-  if (!B || B.prep || B.results) return;
+  if (!B || B.prep || B.results || B.replay) return;
   const M = B.M, C = M.champ;
   if (!C.alive) return;
   if (kind === 'bolt' && B.aim) { B.aim = null; clearHint(); updateFavUi(); return; }
   if (B.fav <= 0 || B.qte) return;
   if (kind === 'heal') {
     if (C.hp >= C.maxHp * 0.97) { hint('Tu campeón ya tiene la vida llena', 1.6); return; }
-    favorHeal(M, C); B.fav--; B.favUsed++; clearHint();
+    favorHeal(M, C); B.inputs.push({ n: M._n, k: 'heal' }); B.fav--; B.favUsed++; clearHint();
   } else if (kind === 'bolt') {
     if (!boltTargets().length) { hint('No hay rivales cerca de tu campeón', 1.6); return; }
     B.aim = { t: 0 }; hint('Toca a un rival para lanzarle el rayo');
@@ -386,7 +394,7 @@ function aimBolt(e) {
     for (const f of cands) { const d = dist2(wx, wy, f.x, f.y - 10); if (d < bd) { bd = d; hit = f; } }
   }
   if (!hit) return;
-  favorBolt(M, C, hit); B.fav--; B.favUsed++;
+  favorBolt(M, C, hit); B.inputs.push({ n: M._n, k: 'bolt', id: hit.id }); B.fav--; B.favUsed++;
   B.aim = null; clearHint(); updateFavUi();
 }
 function qteTap() {
@@ -398,6 +406,7 @@ function finishQte(q) {
   const M = B.M, C = M.champ;
   B.qte = null; clearHint();
   if (C.alive) {
+    B.inputs.push({ n: M._n, k: 'spin', q });
     favorSpin(M, C, q);
     announce(q === 2 ? '¡Perfecto!' : q === 1 ? '¡Bien!' : 'Flojo', 'Contraataque', q === 2 ? 'gold' : '', 3, 1.1);
     if (q === 2) { B.st.perfect++; unlockAch('perfecto'); if (B.st.perfect >= 3) unlockAch('anillo3'); }
@@ -482,7 +491,7 @@ function camButton() {
   b.setAttribute('aria-pressed', String(S.cam === 'drone'));
 }
 function startKillcam(focus, dur, label, opt) {
-  if (!B || B.results || !S.killcam) return;
+  if (!B || B.results || !S.killcam || B.replay || B.replayReq) return;
   opt = opt || {};
   if (B.kc && B.kc.hold && !opt.hold && !opt.force) return;
   /* no cortar al jugador mientras apunta el Rayo o hace el Contraataque */
@@ -499,6 +508,95 @@ function endKillcam() {
   setKillcamUi();
 }
 function sideYaw(a, b) { return Math.atan2(b.y - a.y, b.x - a.x) + Math.PI / 2; }
+function duelCam(M) {
+  const two = M.fighters.filter((f) => f.alive);
+  if (two.length === 2) startKillcam(() => Object.assign(mid(two[0], two[1]), { lock: true }), 999, 'Duelo final', { hold: true, force: true, yaw0: sideYaw(two[0], two[1]), subjects: two });
+}
+
+/* ---------- repetición de las bajas importantes ----------
+   La simulación es determinista: misma semilla + mismos favores en el mismo paso = misma partida.
+   Una partida sombra va REPLAY_LAG pasos por detrás aplicando los favores registrados. Ante una baja
+   importante se adelanta hasta REPLAY_PRE pasos antes del golpe y pasa a ser la partida que se ve;
+   al terminar la repetición sigue siendo la partida real (está en el mismo estado) y la antigua queda de sombra. */
+const REPLAY_LAG = 120, REPLAY_PRE = 90, REPLAY_POST = 40;
+function applyInputsAt(M) {
+  const L = B.inputs;
+  while (M._ip < L.length && L[M._ip].n <= M._n) {
+    const inp = L[M._ip++];
+    if (inp.n < M._n) continue;
+    const C = M.champ;
+    if (inp.k === 'heal') favorHeal(M, C);
+    else if (inp.k === 'bolt') favorBolt(M, C, M.fighters[inp.id]);
+    else if (inp.k === 'spin') favorSpin(M, C, inp.q);
+  }
+}
+function simStep(M) { applyInputsAt(M); stepMatch(M); M._n++; }
+/* huella del estado (posiciones, vida) para comprobar que la repetición reproduce la partida tal cual */
+const stateKey = (M) => M.fighters.map((f) => f.x.toFixed(3) + ',' + f.y.toFixed(3) + ',' + f.hp.toFixed(3) + (f.alive ? 'v' : 'm')).join('|');
+function advanceShadow() {
+  const Sh = B.shadow;
+  if (!Sh || B.replay || B.M.over) return;
+  const target = B.M._n - REPLAY_LAG;
+  for (let k = 0; Sh._n < target && k < 240; k++) simStep(Sh);
+}
+function requestReplay(d) {
+  if (!B || !S.killcam || B.replay || B.replayReq || B.results || !B.shadow || !d.killer) return false;
+  if (B.aim || B.qte) return false;
+  if (B.M._n + 1 - B.shadow._n < 45) return false;
+  B.replayReq = { killerId: d.killer.id, victimId: d.victim.id };
+  return true;
+}
+function startReplay() {
+  const req = B.replayReq; B.replayReq = null;
+  const L = B.M, RL = B.R, Sh = B.shadow, N = L._n;
+  const t0 = performance.now();
+  if (!Sh || N - Sh._n < 40) { afterReplayCam(); return; }
+  Sh.onEvent = null; Sh.fx = NOFX;
+  while (Sh._n < N - REPLAY_PRE) simStep(Sh);
+  const RS = createRenderer($('game'), Sh, { gore: S.gore, hd: RL.K > 1, onSound: (n, v) => SFX.play(n, v), groundFrom: RL.ground });
+  attach3D(RS);
+  RS.time = RL.time;
+  for (const c of RL.corpses) { const sf = c.f && Sh.fighters[c.f.id]; if (sf && !sf.alive) RS.corpses.push(Object.assign({}, c, { f: sf })); }
+  /* la partida que se veía pasa a ser la sombra (ya va por delante: se queda quieta hasta recuperar la distancia) */
+  L.onEvent = null; L.fx = NOFX;
+  /* los favores de este mismo paso ya se aplicaron en directo (p. ej. el Contraataque que dio el golpe): no repetirlos */
+  L._ip = B.inputs.findIndex((i) => i.n > L._n); if (L._ip < 0) L._ip = B.inputs.length;
+  B.shadow = L; B.M = Sh; B.R = RS;
+  const killer = Sh.fighters[req.killerId], victim = Sh.fighters[req.victimId];
+  RS.follow = killer.isChamp ? killer : victim;
+  B.replay = { N, end: N + REPLAY_POST, killer, victim, ms: Math.round(performance.now() - t0), key: stateKey(L) };
+  B.acc = 0;
+  resize();
+  B.kc = { t: 0, dur: 1e9, label: 'Repetición', hold: false, yaw0: sideYaw(killer, victim), subj: [killer, victim], focus: () => Object.assign(mid(killer, victim), { lock: true }) };
+  B.cut3d = true; flashCut(); setKillcamUi();
+  $('scr-battle').classList.add('replay');
+}
+function replayStep() {
+  const M = B.M, rp = B.replay;
+  applyInputsAt(M);
+  /* lo anterior al golpe ya pasó (avisos, favores ganados): solo cuenta lo que ocurre a partir de ahí */
+  if (M._n >= rp.N && !M.onEvent) { M.onEvent = onEvent; (B.replayLog || (B.replayLog = [])).push({ N: rp.N, same: stateKey(M) === rp.key }); }
+  stepMatch(M); M._n++; B.R.step();
+  if (M._n >= rp.end) endReplay();
+}
+function endReplay() {
+  B.replay = null;
+  B.M.onEvent = onEvent;
+  $('scr-battle').classList.remove('replay');
+  afterReplayCam();
+}
+function skipReplay() { while (B && B.replay) replayStep(); }
+function afterReplayCam() {
+  const M = B.M, champ = M.champ;
+  if (M.over && M.winner) {
+    const w = M.winner; B.R.follow = w;
+    startKillcam(() => w, 999, w === champ ? 'Victoria' : 'Último en pie', { hold: true, force: true, subjects: [w] });
+    return;
+  }
+  if (M.aliveN === 2) { duelCam(M); return; }
+  endKillcam();
+  if (!champ.alive && champ.killer && champ.killer.alive) B.R.follow = champ.killer;
+}
 
 const MULTI = ['', '', '¡Doble baja!', '¡Triple baja!', '¡Masacre!', '¡Imparable!'];
 function announce(big, sub, cls, prio, dur) {
@@ -541,14 +639,18 @@ function onEvent(type, d) {
         SFX.play('lose', 1);
         B.deadT = M.t; B.aim = null; if (B.qte) B.qte = null; clearHint(); updateFavUi();
         const k = d.killer, v = { x: champ.x, y: champ.y };
-        startKillcam(() => (k && k.alive ? mid(k, v) : v), 3.0, 'Killcam · tu campeón cae', { yaw0: k ? sideYaw(k, v) : null, force: true, subjects: [k, v] });
+        if (!requestReplay(d)) startKillcam(() => (k && k.alive ? mid(k, v) : v), 3.0, 'Tu campeón cae', { yaw0: k ? sideYaw(k, v) : null, force: true, subjects: [k, v] });
       } else if (d.killer === champ) {
         gainFavor();
         announce(d.multi >= 2 ? MULTI[Math.min(5, d.multi)] : '¡Baja!', champ.d.n + ' elimina a ' + d.victim.d.n, 'gold', 3, 1.6);
         SFX.play('ann', 0.8);
         const v = { x: d.victim.x, y: d.victim.y };
-        B.R.slowmo = Math.max(B.R.slowmo, 0.9);
-        startKillcam(() => (champ.alive ? mid(champ, v) : v), 2.4, 'Killcam · ' + champ.d.n, { yaw0: sideYaw(champ, v), subjects: [champ, v] });
+        /* las bajas que merecen repetición; el resto, un corte corto para no trocear la partida */
+        const big = d.first || d.multi >= 2 || d.weapon === FAVOR_BOLT.n || d.remaining === 1;
+        if (!(big && requestReplay(d))) {
+          B.R.slowmo = Math.max(B.R.slowmo, 0.9);
+          startKillcam(() => (champ.alive ? mid(champ, v) : v), 1.2, 'Killcam · ' + champ.d.n, { yaw0: sideYaw(champ, v), subjects: [champ, v] });
+        }
         /* después de abrir la killcam, para que el aviso de logro espere a que termine */
         if (d.first) unlockAch('primera');
         if (d.weapon === FAVOR_BOLT.n) unlockAch('rayo');
@@ -557,14 +659,15 @@ function onEvent(type, d) {
         announce('¡Primera sangre!', (d.killer ? d.killer.d.n + ' elimina a ' : '') + d.victim.d.n, '', 2, 1.8);
         SFX.play('ann', 0.7);
       }
+      /* golpe final entre otros dos luchadores */
+      if (d.remaining === 1 && d.victim !== champ && d.killer !== champ) requestReplay(d);
       if (B.R.follow === d.victim && d.victim !== champ) B.swapT = M.t + 1.6;
       break;
     }
     case 'remaining':
       if (d.n === 2) {
         announce('¡Duelo final!', 'Solo quedan dos', 'gold', 2, 2);
-        const two = M.fighters.filter((f) => f.alive);
-        if (two.length === 2) startKillcam(() => Object.assign(mid(two[0], two[1]), { lock: true }), 999, 'Duelo final', { hold: true, force: true, yaw0: sideYaw(two[0], two[1]), subjects: two });
+        duelCam(M);
       } else if (d.n === 10) announce('Quedan 10', '', '', 1, 1.4);
       if (d.n === 25 || d.n === 10) gainFavor();
       if (d.n === 2 || d.n === 10) SFX.play('ann', 0.7);
@@ -619,13 +722,24 @@ function tickBattle(dt) {
   if (R.hitstop > 0) R.hitstop--;
   else {
     let sc = B.speed;
-    if (B.qte) sc = 0.22; else if (B.aim) sc *= 0.45;
-    if (R.slowmo > 0) { R.slowmo -= dt; sc *= 0.3; }
+    if (B.replay) {
+      /* repetición a velocidad normal y cámara lenta alrededor del golpe */
+      const d = M._n - B.replay.N; sc = d >= -24 && d <= 10 ? 0.28 : 1; R.slowmo = 0;
+    } else {
+      if (B.qte) sc = 0.22; else if (B.aim) sc *= 0.45;
+      if (R.slowmo > 0) { R.slowmo -= dt; sc *= 0.3; }
+    }
     B.acc += dt * sc;
     let n = 0;
-    while (B.acc >= DT && n < 18) { stepMatch(M); R.step(); B.acc -= DT; n++; }
+    while (B.acc >= DT && n < 18 && !B.replayReq) {
+      if (B.replay) replayStep(); else { stepMatch(M); R.step(); M._n++; }
+      B.acc -= DT; n++;
+    }
     if (n >= 18) B.acc = 0;
   }
+  /* baja importante: se rebobina; la repetición se pinta desde el siguiente fotograma */
+  if (B.replayReq) { startReplay(); return; }
+  advanceShadow();
   /* cámara: cambio de objetivo */
   const champ = M.champ;
   if (!champ.alive && R.follow === champ && B.deadT >= 0 && M.t - B.deadT > 2.4) {
@@ -654,7 +768,7 @@ function tickBattle(dt) {
   if (B.ann) { B.annT += dt; if (B.annT > B.ann.dur) { B.ann = B.annQ.shift() || null; B.annT = 0; drawAnn(); } }
   const now = performance.now();
   for (let i = B.feed.length - 1; i >= 0; i--) if (now - B.feed[i].t > 5000) { B.feed[i].li.remove(); B.feed.splice(i, 1); }
-  if (M.over && M.t - M.endT > 3.6 && !B.results) showResults();
+  if (M.over && M.t - M.endT > 3.6 && !B.results && !B.replay) showResults();
 }
 
 /* ---------- resultados ---------- */
@@ -768,6 +882,7 @@ function copyShare() {
 /* salir a mitad del reto diario: la partida se resuelve sola y ese puesto es el que cuenta */
 function abandonDaily() {
   if (!B || !B.counted || B.results) return;
+  skipReplay();
   B.M.onEvent = null; runToEnd(B.M);
   const C = B.M.champ;
   const place = C.alive ? 1 : C.place;
@@ -839,7 +954,7 @@ function boot(data) {
     else if (e.key === '2') useFavor('bolt');
     else if (e.key === '3') { if (B.qte) qteTap(); else useFavor('spin'); }
     else if (e.key === ' ') { if (B.qte) { e.preventDefault(); qteTap(); } }
-    else if (e.key === 'Escape') { if (B.aim) { B.aim = null; clearHint(); updateFavUi(); } else if (B.kc && !B.kc.hold) endKillcam(); menu(false); }
+    else if (e.key === 'Escape') { if (B.aim) { B.aim = null; clearHint(); updateFavUi(); } else if (B.replay) skipReplay(); else if (B.kc && !B.kc.hold) endKillcam(); menu(false); }
   });
   for (const id of ['fv-heal', 'fv-bolt', 'fv-spin']) $(id).addEventListener('click', () => { if (B && B.qte && id === 'fv-spin') { qteTap(); return; } useFavor($(id).dataset.k); });
   $('pp-map').addEventListener('pointerdown', (e) => { if (B && B.prep) prepPick(e); });
@@ -855,7 +970,7 @@ function boot(data) {
   for (const b of $('opt-snd').children) b.addEventListener('click', () => { S.sound = !!+b.dataset.v; SFX.on = S.sound; for (const o of $('opt-snd').children) o.setAttribute('aria-pressed', String(o === b)); });
   $('b-spd').addEventListener('click', () => { if (B) setSpeed(B.speed === 1 ? 2 : B.speed === 2 ? 4 : 1); });
   $('b-menu').addEventListener('click', () => menu($('h-menu').hidden));
-  $('b-skip').addEventListener('click', () => { menu(false); if (!B || B.results) return; B.M.onEvent = null; runToEnd(B.M); showResults(); });
+  $('b-skip').addEventListener('click', () => { menu(false); if (!B || B.results) return; skipReplay(); B.M.onEvent = null; runToEnd(B.M); showResults(); });
   $('b-snd').addEventListener('click', () => { S.sound = !S.sound; SFX.on = S.sound; $('b-snd').textContent = S.sound ? 'Sonido: sí' : 'Sonido: no'; });
   $('b-exit').addEventListener('click', () => { menu(false); abandonDaily(); B = null; show('select'); select(S.sel); updateMetaUi(); });
   $('r-again').addEventListener('click', () => startBattle(S.sel));
@@ -876,7 +991,8 @@ function boot(data) {
     if (B.prep) return;
     if (B.qte) { qteTap(); return; }
     if (B.aim) { aimBolt(e); return; }
-    /* tocar durante una killcam corta la salta */
+    /* tocar durante una repetición o una killcam corta la salta */
+    if (B.replay) { skipReplay(); return; }
     if (B.kc && !B.kc.hold) { endKillcam(); return; }
     const r = $('game').getBoundingClientRect(), sc = B.scale;
     if (B.R.view3d) {
@@ -895,6 +1011,14 @@ function boot(data) {
   requestAnimationFrame(loop);
 }
 window.__UEP = { start: (id, seed, prep, daily) => { startBattle(ROSTER_BY_ID[id] || S.sel, seed, daily); if (!prep) jump(false); }, jump, useFavor, qteTap, finishQte, get B() { return B; }, get HIST() { return HIST; }, setSpeed, select: (id) => select(ROSTER_BY_ID[id]), S, dayKey,
-  killcam: (dur, hold) => startKillcam(() => B.M.champ, dur || 2.4, 'Prueba', { hold: !!hold, subjects: [B.M.champ] }), unlock: (id) => unlockAch(id) };
+  killcam: (dur, hold) => startKillcam(() => B.M.champ, dur || 2.4, 'Prueba', { hold: !!hold, subjects: [B.M.champ] }), unlock: (id) => unlockAch(id),
+  /* prueba: adelanta la sombra hasta la partida en directo y compara el estado de los 50 luchadores */
+  syncCheck: () => {
+    const Sh = B && B.shadow, M = B && B.M; if (!Sh || B.replay) return null;
+    while (Sh._n < M._n) simStep(Sh);
+    applyInputsAt(Sh);
+    const h = (X) => X.fighters.map((f) => [f.x.toFixed(4), f.y.toFixed(4), f.hp.toFixed(4), f.alive ? 1 : 0].join(',')).join('|');
+    return { n: M._n, shadowN: Sh._n, same: h(Sh) === h(M), alive: M.aliveN };
+  } };
 if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
 else boot((window.claude && window.claude.hot && window.claude.hot.data) || {});
