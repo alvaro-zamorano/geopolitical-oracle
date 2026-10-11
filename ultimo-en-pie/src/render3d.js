@@ -196,7 +196,7 @@ function attach3D(R) {
           const c = e[2];
           ctx.save();
           ctx.globalAlpha = R.corpseAlpha ? R.corpseAlpha(c) : 1;
-          if (!subjSet.has(c) && hides(q.z, q.sx - 14 * s, q.sx + 14 * s, q.sy - 12 * s, q.sy)) ctx.globalAlpha *= 0.35;
+          if (!subjSet.has(c) && !subjSet.has(c.f) && hides(q.z, q.sx - 14 * s, q.sx + 14 * s, q.sy - 12 * s, q.sy)) ctx.globalAlpha *= 0.35;
           ctx.translate(Math.round(q.sx), Math.round(q.sy - 3 * s * flat));
           ctx.scale(s, s * clamp(flat * 2.4, 0.3, 1));
           ctx.rotate(c.rot);
