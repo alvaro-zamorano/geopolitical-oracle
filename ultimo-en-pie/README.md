@@ -9,6 +9,7 @@ Battle royale de 50 luchadores en pixel art. Eliges campeón y miras cómo se ab
 - Los favores se explican antes de saltar (y la primera vez que cada uno tiene sentido en batalla, un aviso indica cuál usar).
 - Reto diario: misma isla, rivales y ventajas para todos cada día (semilla por fecha); solo cuenta el primer intento y lleva racha.
 - Medallas por campeón (bronce top 10, plata top 3, oro victoria), 15 logros y tarjeta 1080×1350 para compartir el resultado. Todo se guarda en el navegador, sin servidor.
+- Cámaras: la cenital se abre hacia el rival con el que pelea tu campeón y lo centra en el hueco que deja el marcador; anillo dorado bajo el campeón y números de daño agrupados a un lado. La killcam va sin botones ni nombres flotando, con el título en el cielo; el duelo final se encuadra de lado, lo que tapa a los protagonistas se vuelve transparente y tocar la pantalla la salta.
 - Modo HD por defecto: doble resolución con escalado EPX y contorno fino, cacheado por pose; si el dispositivo baja de ~30 fps pasa solo a modo clásico.
 
 ## Estructura
