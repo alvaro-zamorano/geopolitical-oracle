@@ -198,6 +198,17 @@ function ringK(ctx, cx, cy, r, K) {
   }
 }
 
+/* elipse de un pixel de grosor (anillos en el suelo vistos en perspectiva cenital) */
+function ellipseK(ctx, cx, cy, rx, ry, K) {
+  const inv = 1 / K, X = Math.round(cx * K), Y = Math.round(cy * K), RX = rx * K, RY = ry * K, n = Math.ceil((RX + RY) * 3.2);
+  let px = null, py = null;
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU, x = Math.round(Math.cos(a) * RX), y = Math.round(Math.sin(a) * RY);
+    if (x === px && y === py) continue;
+    px = x; py = y; ctx.fillRect((X + x) * inv, (Y + y) * inv, inv, inv);
+  }
+}
+
 /* imágenes de obstáculos y objetos según resolución */
 function obsImg(o, biome, K) { const s = obsSprite(o, biome); return K > 1 ? hdOf('o|' + o.type + o.v + biome, () => s.c) : s.c; }
 function itemImg(kind, K) { const c = itemSprite(kind); return K > 1 ? hdOf('i|' + kind, () => c) : c; }
