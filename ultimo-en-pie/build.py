@@ -1,6 +1,6 @@
 import pathlib
 root = pathlib.Path(__file__).parent
-order = ['util','weapons','roster','sprites','hd','world','sim','render','render3d','audio','main']
+order = ['util','weapons','roster','sprites','hd','world','sim','render','render3d','audio','meta','main']
 import re, collections, sys
 seen = collections.defaultdict(list)
 for f in order:
