@@ -2,3 +2,5 @@ node_modules/
 __pycache__/
 *.png
 dist/
+arena/datos/
+.uep-agente.json
