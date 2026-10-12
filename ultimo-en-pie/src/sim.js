@@ -1,5 +1,5 @@
 /* ===== simulación de la batalla (sin DOM: se puede ejecutar en Node) ===== */
-const DT = 1 / 60, FR = 5, SIGHT = 125, HP_MULT = 2.5, KDECAY = Math.exp(-7 / 60);
+const DT = 1 / 60, FR = 5, SIGHT = 125, HP_MULT = 2.5, KDECAY = mexp(-7 / 60);
 const NOFX = new Proxy({}, { get: () => () => {} });
 const ZONE_R0 = 620;
 const ZONE_PHASES = [
@@ -64,8 +64,8 @@ function nextZone(M) {
   const P = ZONE_PHASES[Z.phase];
   const room = Math.max(0, Z.r - P.r) * 0.75;
   const a = M.rng() * TAU, rr = Math.sqrt(M.rng()) * Math.min(room, Z.phase === 0 ? 120 : room);
-  Z.nx = clamp(Z.x + Math.cos(a) * rr, 90, MAP_W - 90);
-  Z.ny = clamp(Z.y + Math.sin(a) * rr, 90, MAP_H - 90);
+  Z.nx = clamp(Z.x + mcos(a) * rr, 90, MAP_W - 90);
+  Z.ny = clamp(Z.y + msin(a) * rr, 90, MAP_H - 90);
   Z.nr = P.r;
   Z.mode = 'wait'; Z.t = P.wait;
   emit(M, 'zone', { phase: Z.phase, mode: 'wait', t: P.wait });
@@ -86,7 +86,7 @@ function zoneUpdate(M) {
   }
   if (M.t > 230) Z.dps = 30;
 }
-function outsideZone(M, x, y, margin) { const Z = M.zone; return dist2(x, y, Z.x, Z.y) > (Z.r - (margin || 0)) ** 2; }
+function outsideZone(M, x, y, margin) { const Z = M.zone; return dist2(x, y, Z.x, Z.y) > sq(Z.r - (margin || 0)); }
 
 function emit(M, type, data) { if (M.onEvent) M.onEvent(type, data || {}); }
 
@@ -113,7 +113,7 @@ function worldEvents(M) {
   if (M.nextAir.length && M.t >= M.nextAir[0]) {
     M.nextAir.shift();
     const Z = M.zone, a = M.rng() * TAU, r = Math.sqrt(M.rng()) * Math.max(10, Math.min(Z.r, Z.nr + 40) * 0.6);
-    let x = clamp(Z.nx + Math.cos(a) * r, 60, MAP_W - 60), y = clamp(Z.ny + Math.sin(a) * r, 60, MAP_H - 60);
+    let x = clamp(Z.nx + mcos(a) * r, 60, MAP_W - 60), y = clamp(Z.ny + msin(a) * r, 60, MAP_H - 60);
     for (let k = 0; k < 20 && (M.world.blocked(x, y, 10) || M.world.hazAt(x, y) === 1 || M.world.hazAt(x, y) === 2); k++) { x += M.rng.range(-20, 20); y += M.rng.range(-20, 20); }
     const A = { x, y, z: 170, landed: false, open: false };
     M.airdrops.push(A);
@@ -133,7 +133,7 @@ function worldEvents(M) {
       const alive = M.fighters.filter((f) => f.alive && f.z <= 0);
       let x, y;
       if (alive.length && M.rng() < 0.55) { const f = M.rng.pick(alive); x = f.x + M.rng.range(-28, 28); y = f.y + M.rng.range(-28, 28); }
-      else { const Z = M.zone, a = M.rng() * TAU, r = Math.sqrt(M.rng()) * Math.min(Z.r, 330); x = Z.x + Math.cos(a) * r; y = Z.y + Math.sin(a) * r; }
+      else { const Z = M.zone, a = M.rng() * TAU, r = Math.sqrt(M.rng()) * Math.min(Z.r, 330); x = Z.x + mcos(a) * r; y = Z.y + msin(a) * r; }
       x = clamp(x, 30, MAP_W - 30); y = clamp(y, 30, MAP_H - 30);
       M.areas.push({ type: 'strike', kind: E.kind, x, y, t: E.kind === 'meteor' ? -1.3 : -0.9, r: E.kind === 'meteor' ? 22 : 15, dmg: E.kind === 'meteor' ? 30 : 24 });
     }
@@ -179,7 +179,7 @@ function updateFighter(M, f) {
 
   /* movimiento */
   let mx = 0, my = 0;
-  const go = (tx, ty, k) => { const dx = tx - f.x, dy = ty - f.y, d = Math.hypot(dx, dy) || 1; mx += dx / d * k; my += dy / d * k; return d; };
+  const go = (tx, ty, k) => { const dx = tx - f.x, dy = ty - f.y, d = mhypot(dx, dy) || 1; mx += dx / d * k; my += dy / d * k; return d; };
   const Z = M.zone;
   switch (f.state) {
     case 'zone': {
@@ -190,7 +190,7 @@ function updateFighter(M, f) {
     }
     case 'flee': {
       const t = f.tgt;
-      if (t && t.alive) { const dx = f.x - t.x, dy = f.y - t.y, d = Math.hypot(dx, dy) || 1; mx += dx / d; my += dy / d; }
+      if (t && t.alive) { const dx = f.x - t.x, dy = f.y - t.y, d = mhypot(dx, dy) || 1; mx += dx / d; my += dy / d; }
       go(Z.x, Z.y, 0.6);
       opportunist(M, f, 1);
       break;
@@ -198,7 +198,7 @@ function updateFighter(M, f) {
     case 'fight': {
       const t = f.tgt;
       if (!t || !t.alive) { f.state = 'roam'; f.decT = 0; break; }
-      const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1;
+      const dx = t.x - f.x, dy = t.y - f.y, d = mhypot(dx, dy) || 1;
       const ux = dx / d, uy = dy / d, px = -uy * f.side, py = ux * f.side;
       const melee = w.k === 'melee' || w.k === 'thrust' || w.k === 'cont';
       if (melee) {
@@ -231,19 +231,19 @@ function updateFighter(M, f) {
     }
   }
   /* steering con obstáculos y lava */
-  let ml = Math.hypot(mx, my);
+  let ml = mhypot(mx, my);
   if (ml > 0.01) {
     mx /= ml; my /= ml;
-    const base = Math.atan2(my, mx);
+    const base = matan2(my, mx);
     const tries = [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, 2.6, -2.6];
     for (const o of tries) {
       const a = base + o * f.side;
-      const px = f.x + Math.cos(a) * 9, py = f.y + Math.sin(a) * 9;
+      const px = f.x + mcos(a) * 9, py = f.y + msin(a) * 9;
       const h = W.hazAt(px, py);
       if (W.blocked(px, py, FR + 1)) continue;
       if (h === 1 && hz !== 1) continue;
       if (!M.training && f.state !== 'zone' && outsideZone(M, px, py, 4) && !outsideZone(M, f.x, f.y, 4)) continue;
-      mx = Math.cos(a); my = Math.sin(a); break;
+      mx = mcos(a); my = msin(a); break;
     }
     ml = 1;
   }
@@ -265,7 +265,7 @@ function updateFighter(M, f) {
     if (d2 < m * m) { const d = Math.sqrt(d2) || 1; f.x = o.x + dx / d * m; f.y = o.y + dy / d * m; f.kx *= 0.5; f.ky *= 0.5; }
   }
   f.x = clamp(f.x, EDGE + 6, MAP_W - EDGE - 6); f.y = clamp(f.y, EDGE + 6, MAP_H - EDGE - 6);
-  const spd = Math.hypot(f.vx, f.vy);
+  const spd = mhypot(f.vx, f.vy);
   f.moving = spd > 6;
   if (f.moving) f.walk = (f.walk + spd * DT * 0.09) % 1;
   if (f.state === 'fight' || (f.contT > 0) || f.atkT >= 0) { /* mira al objetivo */ }
@@ -291,7 +291,7 @@ function pickWander(M, f) {
   const R = Math.max(20, Math.min(Z.r, Z.nr + 60) * 0.7);
   for (let k = 0; k < 8; k++) {
     const a = M.rng() * TAU, r = Math.sqrt(M.rng()) * R;
-    const x = clamp(cx + Math.cos(a) * r, EDGE + 20, MAP_W - EDGE - 20), y = clamp(cy + Math.sin(a) * r, EDGE + 20, MAP_H - EDGE - 20);
+    const x = clamp(cx + mcos(a) * r, EDGE + 20, MAP_W - EDGE - 20), y = clamp(cy + msin(a) * r, EDGE + 20, MAP_H - EDGE - 20);
     if (!M.world.blocked(x, y, 8) && M.world.hazAt(x, y) !== 1) { f.gx = x; f.gy = y; return; }
   }
   f.gx = cx; f.gy = cy;
@@ -309,6 +309,7 @@ function think(M, f) {
     let s = -d;
     if (P.weak) s += (1 - o.hp / o.maxHp) * 80 * P.weak;
     if (o === f.lastHitBy && M.t - f.lastHitT < 3) s += 80;
+    if (f.focus === o.id) s += 70; /* rival preferido por su agente (liga de agentes) */
     if (P.duel && o.state === 'fight' && o.tgt && o.tgt !== f && M.t - o.lastHitT < 2) s -= 70;
     if (s > bestS) { bestS = s; best = o; bestD = d; }
   }
@@ -332,7 +333,14 @@ function think(M, f) {
     f.state = 'fight'; f.tgt = f.lastHitBy; return;
   }
   const lam = aggr * 0.14 * (1.15 - bestD / SIGHT) * (M.aliveN <= 12 ? 2.2 : 1);
-  if (best && ((bestD < 22 && !early) || M.rng() < 1 - Math.exp(-lam * 0.37))) { f.state = 'fight'; f.tgt = best; return; }
+  if (best && ((bestD < 22 && !early) || M.rng() < 1 - mexp(-lam * 0.37))) { f.state = 'fight'; f.tgt = best; return; }
+  /* destino marcado por su agente (liga de agentes): zona, cofre o punto; la IA sigue decidiendo las peleas */
+  if (f.dest) {
+    const D = f.dest;
+    if (D.k === 'zona') { if (dist(f.x, f.y, Z.nx, Z.ny) > Z.nr * 0.5) { f.state = 'roam'; f.gx = Z.nx; f.gy = Z.ny; return; } }
+    else if (D.k === 'cofre') { if (D.g && !D.g.open && (!D.g.z || D.g.landed)) { f.state = 'loot'; f.goal = D.g; return; } f.dest = null; }
+    else if (D.k === 'punto') { if (dist(f.x, f.y, D.x, D.y) > 12) { f.state = 'roam'; f.gx = D.x; f.gy = D.y; return; } f.dest = null; }
+  }
   /* botín */
   let loot = null, ld = 1e9;
   const lootR = 120 + 80 * P.loot;
@@ -363,21 +371,21 @@ function aimAt(M, f, t, spd) {
   if (spd) { const tt = dist(f.x, f.y, t.x, t.y) / spd; tx += t.vx * tt * f.P.skill; ty += t.vy * tt * f.P.skill; }
   const dd = dist(f.x, f.y, t.x, t.y);
   const err = ((1 - f.P.skill) * 0.32 + dd / 230 * 0.16) * (M.rng() * 2 - 1);
-  return Math.atan2(ty - f.y, tx - f.x) + err;
+  return matan2(ty - f.y, tx - f.x) + err;
 }
 function tryAttack(M, f, t) {
   const w = f.w;
   if (f.stun > 0 || !t.alive) return false;
   const d = dist(f.x, f.y, t.x, t.y);
   if (w.k === 'cont') {
-    if (d <= w.rng + FR) { f.contT = 0.25; const a = Math.atan2(t.y - f.y, t.x - f.x); f.aim += angDiff(f.aim, a) * 0.3; f.f = Math.cos(f.aim) >= 0 ? 1 : -1; return true; }
+    if (d <= w.rng + FR) { f.contT = 0.25; const a = matan2(t.y - f.y, t.x - f.x); f.aim += angDiff(f.aim, a) * 0.3; f.f = mcos(f.aim) >= 0 ? 1 : -1; return true; }
     return false;
   }
   if (f.cd > 0 || f.atkT >= 0) return false;
   const jit = M.rng.range(0.9, 1.12) * (f.P.rage && f.hp < f.maxHp * 0.4 ? 0.8 : 1);
   if (w.k === 'melee' || w.k === 'thrust') {
     if (d > w.rng + FR + 1) return false;
-    f.aim = Math.atan2(t.y - f.y, t.x - f.x); f.f = Math.cos(f.aim) >= 0 ? 1 : -1;
+    f.aim = matan2(t.y - f.y, t.x - f.x); f.f = mcos(f.aim) >= 0 ? 1 : -1;
     f.atkT = 0; f.atkDur = clamp(w.cd * 0.75, 0.16, 0.5); f.atkHit = false; f.atkTgt = t; f.cd = w.cd * jit;
     M.fx.swing(f);
     return true;
@@ -388,7 +396,7 @@ function tryAttack(M, f, t) {
   if (w.k === 'proj') { fireProj(M, f, t); if (w.burst) { f.burstN = w.burst - 1; f.burstT = 0.09; } }
   else if (w.k === 'beam') fireBeam(M, f, t);
   else if (w.k === 'lob') fireLob(M, f, t);
-  else if (w.k === 'wave') { f.aim = Math.atan2(t.y - f.y, t.x - f.x); f.f = Math.cos(f.aim) >= 0 ? 1 : -1; const A = { type: 'wave', owner: f, x: f.x, y: f.y, ang: f.aim, cone: w.cone, r: 4, rmax: w.rng, hit: new Set() }; M.areas.push(A); M.fx.wave(A, f); }
+  else if (w.k === 'wave') { f.aim = matan2(t.y - f.y, t.x - f.x); f.f = mcos(f.aim) >= 0 ? 1 : -1; const A = { type: 'wave', owner: f, x: f.x, y: f.y, ang: f.aim, cone: w.cone, r: 4, rmax: w.rng, hit: new Set() }; M.areas.push(A); M.fx.wave(A, f); }
   f.recoil = 0.12;
   return true;
 }
@@ -402,7 +410,7 @@ function resolveMelee(M, f) {
     if (!t || t === f || !t.alive || t.z > 0) continue;
     const d = dist(f.x, f.y, t.x, t.y);
     if (d > reach + (w.multi ? 0 : 3)) continue;
-    const a = Math.atan2(t.y - f.y, t.x - f.x);
+    const a = matan2(t.y - f.y, t.x - f.x);
     if (Math.abs(angDiff(f.aim, a)) > half) continue;
     hurt(M, t, f, w.dmg * 1.25, { kind: 'melee', dir: a, knock: w.knock, w });
     hit++;
@@ -413,12 +421,12 @@ function resolveMelee(M, f) {
 function fireProj(M, f, t) {
   const w = f.w;
   const base = aimAt(M, f, t, w.spd);
-  f.aim = base; f.f = Math.cos(base) >= 0 ? 1 : -1;
+  f.aim = base; f.f = mcos(base) >= 0 ? 1 : -1;
   const n = w.count || 1;
   for (let i = 0; i < n; i++) {
     const a = base + (n > 1 ? (i - (n - 1) / 2) * (w.spread / (n - 1)) : 0) + (n > 1 ? M.rng.range(-0.05, 0.05) : 0);
-    const sx = f.x + Math.cos(a) * 7, sy = f.y + Math.sin(a) * 7;
-    M.proj.push({ owner: f, w, type: w.p, x: sx, y: sy, ox: sx, oy: sy, vx: Math.cos(a) * w.spd, vy: Math.sin(a) * w.spd, ang: a,
+    const sx = f.x + mcos(a) * 7, sy = f.y + msin(a) * 7;
+    M.proj.push({ owner: f, w, type: w.p, x: sx, y: sy, ox: sx, oy: sy, vx: mcos(a) * w.spd, vy: msin(a) * w.spd, ang: a,
       life: w.rng / w.spd * (w.boomer ? 0.55 : 1.05), t: 0, hit: new Set(), dmg: w.dmg, back: false, bounces: w.bounce || 0, tgt: t, spin: 0 });
   }
   M.fx.shoot(f, w, base);
@@ -426,12 +434,12 @@ function fireProj(M, f, t) {
 function fireBeam(M, f, t) {
   const w = f.w;
   const a = aimAt(M, f, t, 0);
-  f.aim = a; f.f = Math.cos(a) >= 0 ? 1 : -1;
-  const pts = [[f.x + Math.cos(a) * 8, f.y + Math.sin(a) * 8 - 9]];
+  f.aim = a; f.f = mcos(a) >= 0 ? 1 : -1;
+  const pts = [[f.x + mcos(a) * 8, f.y + msin(a) * 8 - 9]];
   const d = dist(f.x, f.y, t.x, t.y);
-  const miss = Math.abs(angDiff(a, Math.atan2(t.y - f.y, t.x - f.x))) * d > FR + 2;
+  const miss = Math.abs(angDiff(a, matan2(t.y - f.y, t.x - f.x))) * d > FR + 2;
   if (miss) {
-    pts.push([f.x + Math.cos(a) * w.rng, f.y + Math.sin(a) * w.rng - 9]);
+    pts.push([f.x + mcos(a) * w.rng, f.y + msin(a) * w.rng - 9]);
     M.fx.beam(pts, w, false);
     M.fx.shoot(f, w, a);
     return;
@@ -444,7 +452,7 @@ function fireBeam(M, f, t) {
     for (const o of M.fighters) if (o.alive && o !== f && !hitSet.has(o) && o.z <= 0) { const dd = dist2(cur.x, cur.y, o.x, o.y); if (dd < nd) { nd = dd; nb = o; } }
     if (!nb) break;
     hitSet.add(nb); pts.push([nb.x, nb.y - 9]);
-    hurt(M, nb, f, w.dmg * 0.6, { kind: 'beam', dir: Math.atan2(nb.y - cur.y, nb.x - cur.x), knock: 40, w });
+    hurt(M, nb, f, w.dmg * 0.6, { kind: 'beam', dir: matan2(nb.y - cur.y, nb.x - cur.x), knock: 40, w });
     cur = nb;
   }
   M.fx.beam(pts, w, true);
@@ -455,7 +463,7 @@ function fireLob(M, f, t) {
   const tt = 0.75;
   let tx = t.x + t.vx * tt * f.P.skill, ty = t.y + t.vy * tt * f.P.skill;
   tx += M.rng.range(-1, 1) * (1 - f.P.skill) * 24; ty += M.rng.range(-1, 1) * (1 - f.P.skill) * 24;
-  f.aim = Math.atan2(ty - f.y, tx - f.x); f.f = Math.cos(f.aim) >= 0 ? 1 : -1;
+  f.aim = matan2(ty - f.y, tx - f.x); f.f = mcos(f.aim) >= 0 ? 1 : -1;
   M.proj.push({ owner: f, w, type: w.p, lob: true, x: f.x, y: f.y, sx: f.x, sy: f.y, tx, ty, T: tt, t: 0, z: 10, hit: new Set(), dmg: w.dmg, spin: 0, ang: f.aim });
   M.fx.shoot(f, w, f.aim);
 }
@@ -467,7 +475,7 @@ function contTick(M, f) {
     if (t === f || !t.alive || t.z > 0) continue;
     const d = dist(f.x, f.y, t.x, t.y);
     if (d > w.rng + FR) continue;
-    const a = Math.atan2(t.y - f.y, t.x - f.x);
+    const a = matan2(t.y - f.y, t.x - f.x);
     if (Math.abs(angDiff(f.aim, a)) > w.cone) continue;
     if (w.burn && !M.world.los(f.x, f.y, t.x, t.y)) continue;
     hurt(M, t, f, w.dps * DT, { kind: 'cont', dir: a, knock: w.knock || 2, w, tick: true });
@@ -483,27 +491,27 @@ function updateProjectiles(M) {
     let dead = false;
     if (p.lob) {
       const k = p.t / p.T;
-      p.x = lerp(p.sx, p.tx, k); p.y = lerp(p.sy, p.ty, k); p.z = 10 + Math.sin(Math.min(1, k) * Math.PI) * 38 - k * 10;
+      p.x = lerp(p.sx, p.tx, k); p.y = lerp(p.sy, p.ty, k); p.z = 10 + msin(Math.min(1, k) * Math.PI) * 38 - k * 10;
       if (k >= 1) { explode(M, p.owner, p.tx, p.ty, p.w.aoe, p.dmg, 'bomb'); dead = true; }
     } else {
       if (p.w.homing && p.tgt && p.tgt.alive) {
-        const a = Math.atan2(p.tgt.y - p.y, p.tgt.x - p.x), cur = Math.atan2(p.vy, p.vx);
-        const na = cur + clamp(angDiff(cur, a), -2.6 * DT, 2.6 * DT), sp = Math.hypot(p.vx, p.vy);
-        p.vx = Math.cos(na) * sp; p.vy = Math.sin(na) * sp;
+        const a = matan2(p.tgt.y - p.y, p.tgt.x - p.x), cur = matan2(p.vy, p.vx);
+        const na = cur + clamp(angDiff(cur, a), -2.6 * DT, 2.6 * DT), sp = mhypot(p.vx, p.vy);
+        p.vx = mcos(na) * sp; p.vy = msin(na) * sp;
       }
       if (p.w.boomer && !p.back && p.t > p.life) { p.back = true; p.hit.clear(); }
       if (p.back) {
         const o = p.owner;
-        const a = Math.atan2(o.y - p.y, o.x - p.x), sp = p.w.spd * 1.1;
-        p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp;
+        const a = matan2(o.y - p.y, o.x - p.x), sp = p.w.spd * 1.1;
+        p.vx = mcos(a) * sp; p.vy = msin(a) * sp;
         if (!o.alive || dist2(p.x, p.y, o.x, o.y) < 64 || p.t > p.life * 4) dead = true;
       }
-      p.x += p.vx * DT; p.y += p.vy * DT; p.ang = Math.atan2(p.vy, p.vx);
+      p.x += p.vx * DT; p.y += p.vy * DT; p.ang = matan2(p.vy, p.vx);
       if (!p.w.boomer && p.t > p.life) { dead = true; if (p.w.aoe) explode(M, p.owner, p.x, p.y, p.w.aoe, p.dmg * 0.7, 'fire'); else M.fx.projDie(p, false); }
       const ob = W.blocked(p.x, p.y, 1);
       if (!dead && ob) {
         if (p.bounces > 0) {
-          const nx = p.x - ob.x, ny = p.y - ob.y, nl = Math.hypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl;
+          const nx = p.x - ob.x, ny = p.y - ob.y, nl = mhypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl;
           const dot = p.vx * ux + p.vy * uy; p.vx -= 2 * dot * ux; p.vy -= 2 * dot * uy; p.bounces--; p.x += ux * 2; p.y += uy * 2; p.hit.clear();
           M.fx.bounce(p);
         } else if (p.w.boomer) { p.back = true; p.hit.clear(); }
@@ -538,7 +546,7 @@ function explode(M, owner, x, y, r, dmg, kind, skip, w, stun) {
     if (d > r + FR) continue;
     const k = 1 - clamp(d / (r + FR), 0, 1) * 0.6;
     const self = t === owner ? 0.5 : 1;
-    hurt(M, t, owner, dmg * k * self, { kind: 'boom', dir: Math.atan2(t.y - y, t.x - x), knock: kind === 'bomb' || kind === 'meteor' ? 200 : 90, w: w || (owner ? owner.w : null), burn: kind !== 'bolt' });
+    hurt(M, t, owner, dmg * k * self, { kind: 'boom', dir: matan2(t.y - y, t.x - x), knock: kind === 'bomb' || kind === 'meteor' ? 200 : 90, w: w || (owner ? owner.w : null), burn: kind !== 'bolt' });
     if (stun && t.alive) t.stun = Math.max(t.stun, stun);
   }
 }
@@ -554,7 +562,7 @@ function updateAreas(M) {
         if (t === A.owner || !t.alive || t.z > 0 || A.hit.has(t)) continue;
         const d = dist(A.x, A.y, t.x, t.y);
         if (d > A.r || d < A.r - 12) continue;
-        const a = Math.atan2(t.y - A.y, t.x - A.x);
+        const a = matan2(t.y - A.y, t.x - A.x);
         if (Math.abs(angDiff(A.ang, a)) > A.cone / 2 + 0.15) continue;
         A.hit.add(t);
         hurt(M, t, A.owner, A.owner.w.dmg, { kind: 'wave', dir: a, knock: A.owner.w.knock, w: A.owner.w });
@@ -592,8 +600,8 @@ function hurt(M, t, src, amount, o) {
     if (o.w && o.w.leech && (o.kind === 'melee' || o.kind === 'thrust' || o.kind === 'cont')) src.hp = Math.min(src.maxHp, src.hp + dmg * o.w.leech);
     if (src.leechAll && src.alive) src.hp = Math.min(src.maxHp, src.hp + dmg * src.leechAll);
   }
-  if (o.knock && !o.tick) { const k = o.knock / t.mass * (crit ? 1.4 : 1); t.kx += Math.cos(o.dir) * k; t.ky += Math.sin(o.dir) * k; }
-  else if (o.knock && o.kind === 'cont') { t.kx += Math.cos(o.dir) * o.knock * 0.3; t.ky += Math.sin(o.dir) * o.knock * 0.3; }
+  if (o.knock && !o.tick) { const k = o.knock / t.mass * (crit ? 1.4 : 1); t.kx += mcos(o.dir) * k; t.ky += msin(o.dir) * k; }
+  else if (o.knock && o.kind === 'cont') { t.kx += mcos(o.dir) * o.knock * 0.3; t.ky += msin(o.dir) * o.knock * 0.3; }
   applyStatus(M, t, src, o);
   M.fx.hit(t, src, dmg + absorbed, o, crit, absorbed > 0);
   if (t.hp <= 0) kill(M, t, src, o, -t.hp);
@@ -701,7 +709,7 @@ function validDrop(M, x, y) {
   const W = M.world;
   const ok = (px, py) => px > EDGE + 14 && py > EDGE + 14 && px < MAP_W - EDGE - 14 && py < MAP_H - EDGE - 14 && !W.blocked(px, py, FR + 2) && W.hazAt(px, py) !== 1 && W.hazAt(px, py) !== 2;
   if (ok(x, y)) return { x, y };
-  for (let r = 4; r < 120; r += 4) for (let a = 0; a < TAU; a += 0.4) { const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r; if (ok(px, py)) return { x: px, y: py }; }
+  for (let r = 4; r < 120; r += 4) for (let a = 0; a < TAU; a += 0.4) { const px = x + mcos(a) * r, py = y + msin(a) * r; if (ok(px, py)) return { x: px, y: py }; }
   return { x: MAP_W / 2, y: MAP_H / 2 };
 }
 function placeFighter(M, f, x, y) {
@@ -732,12 +740,25 @@ function favorSpin(M, f, q) {
     if (t === f || !t.alive || t.z > 0) continue;
     const d = dist(f.x, f.y, t.x, t.y);
     if (d > r + FR) continue;
-    hurt(M, t, f, dmg, { kind: 'spin', dir: Math.atan2(t.y - f.y, t.x - f.x), knock: kn, w: FAVOR_SPIN });
+    hurt(M, t, f, dmg, { kind: 'spin', dir: matan2(t.y - f.y, t.x - f.x), knock: kn, w: FAVOR_SPIN });
     if (t.alive) t.stun = Math.max(t.stun, st);
     n++;
   }
   M.fx.spin(f, r, q);
   return n;
+}
+
+/* calidad del contraataque de un agente: sale del momento elegido, no de los reflejos.
+   Perfecto si dos rivales le están atacando o uno está en mitad de un golpe; bien si hay alguno cerca; flojo si no hay nadie */
+function spinQuality(M, f) {
+  let hitting = 0, mid = 0, near = 0;
+  for (const t of M.fighters) {
+    if (t === f || !t.alive || t.z > 0) continue;
+    if (dist(f.x, f.y, t.x, t.y) > 30) continue;
+    near++;
+    if (t.state === 'fight' && t.tgt === f) { hitting++; if (t.atkT >= 0) mid++; }
+  }
+  return hitting >= 2 || mid >= 1 ? 2 : near >= 1 ? 1 : 0;
 }
 
 /* ejecuta la partida entera sin dibujar (saltar al final, pruebas) */
