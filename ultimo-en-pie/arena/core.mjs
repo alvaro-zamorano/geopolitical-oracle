@@ -18,7 +18,7 @@ export const hashState = (sim, M) => sim.ligaHuella(M);
 const BLOQUEO = /\b(nazi|hitler|violar|viola[cr]|pedof|suicid|matarte de verdad|negrat|maric[oó]n|put[ao] madre|retrasad[oa])\w*/i;
 export function limpiarTexto(t, max) {
   if (typeof t !== 'string') return null;
-  const s = t.replace(/[\x00-\x1f\x7f  ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  const s = t.replace(/[\x00-\x1f\x7f\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   return s || null;
 }
 export function filtrarPensamiento(t) {
@@ -220,7 +220,7 @@ export class ArenaMatch {
     }
     if (r.favor != null) {
       const fv = typeof r.favor === 'string' ? { tipo: r.favor } : r.favor;
-      const tipo = fv && String(fv.tipo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const tipo = fv && String(fv.tipo || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
       if ((f.fav || 0) <= 0) errores.push('no te quedan favores');
       else if (f.z > 0) errores.push('no puedes usar favores mientras caes');
       else if (tipo === 'pocion') { if (f.hp >= f.maxHp * 0.97) errores.push('tienes la vida llena: la poción no se gasta'); else inp.f = { t: 'pocion' }; }
