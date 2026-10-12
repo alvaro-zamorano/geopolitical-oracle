@@ -1,5 +1,5 @@
 const fs=require('fs');
-const src=['util','weapons','roster','world','sim'].map(f=>fs.readFileSync(__dirname+'/../src/'+f+'.js','utf8')).join('\n');
+const src=['util','mathx','weapons','roster','world','sim'].map(f=>fs.readFileSync(__dirname+'/../src/'+f+'.js','utf8')).join('\n');
 const api=new Function(src+'\nreturn {ROSTER,createMatch,stepMatch};')();
 const hist=new Array(20).fill(0), early={}; let fightTime=0, states={};
 for(let s=1;s<=20;s++){

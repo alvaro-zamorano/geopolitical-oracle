@@ -77,7 +77,7 @@ function genWorld(seed) {
   const free = (x, y, r, pad) => {
     if (x < EDGE + 12 || y < EDGE + 12 || x > MAP_W - EDGE - 12 || y > MAP_H - EDGE - 12) return false;
     const hz = W.hazAt(x, y); if (hz === 1 || hz === 2) return false;
-    for (const o of W.obstacles) if (dist2(x, y, o.x, o.y) < (r + o.r + pad) ** 2) return false;
+    for (const o of W.obstacles) if (dist2(x, y, o.x, o.y) < sq(r + o.r + pad)) return false;
     return true;
   };
   const addObs = (type, x, y) => { const o = { type, x: Math.round(x), y: Math.round(y), r: OBS_R[type], v: rng.int(0, 2) }; W.obstacles.push(o); return o; };
@@ -86,7 +86,7 @@ function genWorld(seed) {
     const p = pointIn('ruinas'); if (!p) break;
     const a = rng.pick([0, Math.PI / 2]) + rng.range(-0.15, 0.15), n = rng.int(3, 5);
     for (let i = 0; i < n; i++) {
-      const x = p.x + Math.cos(a) * i * 11, y = p.y + Math.sin(a) * i * 11;
+      const x = p.x + mcos(a) * i * 11, y = p.y + msin(a) * i * 11;
       if (rng() < 0.82 && free(x, y, 5, -2)) addObs(i % 2 ? 'block' : 'pillar', x, y);
     }
   }
@@ -116,7 +116,7 @@ function genWorld(seed) {
   }
   W.near = (x, y) => W.grid[clamp(y / W.cell | 0, 0, W.gw - 1) * W.gw + clamp(x / W.cell | 0, 0, W.gw - 1)];
   W.blocked = (x, y, pad) => {
-    for (const o of W.near(x, y)) if (dist2(x, y, o.x, o.y) < (o.r + pad) ** 2) return o;
+    for (const o of W.near(x, y)) if (dist2(x, y, o.x, o.y) < sq(o.r + pad)) return o;
     return null;
   };
   W.los = (x1, y1, x2, y2) => {
