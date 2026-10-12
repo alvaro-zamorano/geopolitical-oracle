@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14101b">
+<title>Prueba de determinismo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Pixelify+Sans:wght@400;600&family=Silkscreen&display=swap">
+<style>
+:root {
+  --night: #14101b; --panel: #1e1828; --line: #3b3149; --bone: #efe6d6; --dim: #a89bb8;
+  --ok: #6fdc5a; --bad: #ff5a6a; --gold: #f2b43a;
+  --display: 'Jersey 10', 'Pixelify Sans', ui-monospace, monospace;
+  --body: 'Pixelify Sans', ui-monospace, system-ui, sans-serif;
+  --label: 'Silkscreen', ui-monospace, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--night); color: var(--bone); font-family: var(--body); font-size: 15px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+main { max-width: 520px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 24px) 16px calc(env(safe-area-inset-bottom) + 32px); }
+.k { font-family: var(--label); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+h1 { font-family: var(--display); font-weight: 400; font-size: 40px; line-height: .95; text-transform: uppercase; margin: 4px 0 8px; }
+p { margin: 0 0 16px; color: var(--dim); }
+.motor { font-family: var(--label); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--bone); background: var(--panel); border: 2px solid var(--line); padding: 8px 10px; margin-bottom: 16px; }
+ol { list-style: none; margin: 0 0 20px; padding: 0; border: 2px solid var(--line); background: var(--panel); }
+li { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: baseline; padding: 9px 10px; border-top: 1px solid var(--line); }
+li:first-child { border-top: 0; }
+li .i { font-family: var(--label); font-size: 12px; color: var(--dim); }
+li.ok .i { color: var(--ok); }
+li.bad .i { color: var(--bad); }
+li .v { font-family: var(--label); font-size: 11px; color: var(--dim); white-space: nowrap; }
+li.bad .v { color: var(--bad); }
+.veredicto { border: 3px solid var(--line); padding: 14px 14px 12px; text-align: center; }
+.veredicto .t { font-family: var(--display); font-size: 44px; line-height: .9; text-transform: uppercase; }
+.veredicto .s { font-family: var(--label); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin-top: 8px; }
+.veredicto.ok { border-color: var(--ok); } .veredicto.ok .t { color: var(--ok); }
+.veredicto.bad { border-color: var(--bad); } .veredicto.bad .t { color: var(--bad); }
+.pie { margin-top: 16px; font-size: 13px; color: var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <div class="k">Último en Pie · Liga de agentes</div>
+  <h1>Prueba de determinismo</h1>
+  <p>Este navegador rehace las mismas partidas que calculó el servidor. Si todas las huellas coinciden, lo que ves en la web es exactamente la partida que se jugó.</p>
+  <div class="motor" id="motor"></div>
+  <ol id="filas"></ol>
+  <div class="veredicto" id="veredicto"><div class="t">Calculando…</div><div class="s">tarda unos segundos</div></div>
+  <div class="pie" id="pie"></div>
+</main>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>
