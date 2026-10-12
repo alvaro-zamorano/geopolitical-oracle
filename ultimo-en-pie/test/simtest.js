@@ -1,5 +1,5 @@
 const fs=require('fs');
-const src=['util','weapons','roster','world','sim'].map(f=>fs.readFileSync(__dirname+'/../src/'+f+'.js','utf8')).join('\n');
+const src=['util','mathx','weapons','roster','world','sim'].map(f=>fs.readFileSync(__dirname+'/../src/'+f+'.js','utf8')).join('\n');
 const api=new Function(src+'\nreturn {ROSTER,createMatch,runToEnd,stepMatch,genWorld,WEAPONS};')();
 const N=+process.argv[2]||100;
 const wins={}, dur=[], firstKill=[], alive60=[], causes={}; let errors=0, fails=0;

@@ -1,6 +1,6 @@
 /* mide cuánto mejora el puesto medio de un jugador que usa bien la preparación y los favores */
 const fs = require('fs');
-const src = ['util', 'weapons', 'roster', 'world', 'sim'].map((f) => fs.readFileSync(__dirname + '/../src/' + f + '.js', 'utf8')).join('\n');
+const src = ['util','mathx','weapons', 'roster', 'world', 'sim'].map((f) => fs.readFileSync(__dirname + '/../src/' + f + '.js', 'utf8')).join('\n');
 const api = new Function(src + '\nreturn {ROSTER,createMatch,stepMatch,applyPerk,placeFighter,favorHeal,favorBolt,favorSpin,PERK_IDS,dist,RNG,MAP_W,MAP_H};')();
 const N = +process.argv[2] || 150;
 const mode = process.argv[3] || 'all';
